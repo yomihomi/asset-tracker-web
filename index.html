@@ -108,6 +108,13 @@ nav.tabs button[aria-current="page"]{color:var(--accent);font-weight:700;backgro
 .idx{display:grid;grid-template-columns:1fr 1fr auto;gap:8px;align-items:end}
 .idx .nm{grid-column:1/-1;font-size:13px;font-weight:600}
 .idx .dd{font-family:var(--font-num);font-size:16px;font-weight:600;min-width:64px;text-align:right;padding-bottom:9px}
+.idx.auto{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:4px 10px;padding:10px 12px;border:1px solid var(--line);border-radius:10px}
+.idx.auto .nm{flex:1 0 100%}
+.idx.auto .iv{display:flex;flex-direction:column;gap:2px;font-size:13.5px;color:var(--muted)}
+.idx.auto .iv b{color:var(--ink);font-weight:600}
+.idx.auto .dd{padding-bottom:0}
+.idx.off{opacity:.55}
+.idx .nm input.use{width:auto;margin:0 6px 0 0;vertical-align:-2px;accent-color:var(--accent)}
 .idx .dd.warn{color:var(--warn)} .idx .dd.bad{color:var(--bad)}
 details.more{border-top:1px solid var(--line);padding-top:10px}
 details.more summary{cursor:pointer;font-size:13.5px;color:var(--muted)}
@@ -799,21 +806,34 @@ $('rbDelPf').addEventListener('click',async()=>{
 let ST=null, stIdx=[];
 const todayStr=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`};
 const mdTxt=s=>{const [,m,d]=s.split('-').map(Number);return `${m}월 ${d}일`};
+const IDX_KEY={'S&P500':'SPX','코스피':'KOSPI'};
+const fmtIdx=v=>n(v).toLocaleString('ko-KR',{maximumFractionDigits:2});
+const md=d=>d?d.slice(5).replace('-','/'):'';
+function idxRows(){ return stIdx.map(x=>{ const k=x.key||IDX_KEY[x.name], a=PRICES?.indices?.[k];
+  return a? {...x,key:k,peak:a.peak,cur:a.cur,peakDate:a.peakDate,date:a.date,stale:a.stale,auto:true} : {...x,key:k} }) }
 function stEval(){
-  const dds=stIdx.map(x=>(n(x.peak)>0&&n(x.cur)>0)?(n(x.cur)/n(x.peak)-1)*100:null);
+  const rows=idxRows();
+  const ddAll=rows.map(x=>(n(x.peak)>0&&n(x.cur)>0)?(n(x.cur)/n(x.peak)-1)*100:null);
+  const dds=ddAll.map((v,i)=>rows[i].use===false?null:v);
   const valid=dds.filter(v=>v!==null), worst=valid.length?Math.min(...valid):null;
   const act=ST.active??-1; let target=act;
   if(act<0) target=0;
   else if(worst!==null) ST.stages.forEach((s,i)=>{ if(i>act&&i>0&&worst<=n(s.trigger)) target=i });
   const sch=ST.scheduled, due= act<0 && (!sch || todayStr()>=sch.date);
-  return {dds,worst,act,target,due,sch};
+  return {dds,ddAll,rows,worst,act,target,due,sch};
 }
 function stRenderAll(){
   if(!ST){$('stSignal').className='chip warn';$('stSignal').textContent= DB?'전략 정보가 없습니다':'저장소에 연결되지 않았습니다';$('stHome').hidden=true;return}
-  $('stIdx').innerHTML=stIdx.map((x,i)=>`<div class="idx"><span class="nm">${esc(x.name)}${x.updated?` <span class="note" style="font-weight:400">· ${esc(x.updated)} 입력</span>`:''}</span>
+  const rows=idxRows(), chk=(x,i)=>`<input type="checkbox" class="use" data-use="${i}" id="ix-${i}-use" ${x.use===false?'':'checked'} aria-label="${esc(x.name)} 조건에 사용">`;
+  $('stIdx').innerHTML=rows.map((x,i)=> x.auto?
+    `<div class="idx auto ${x.use===false?'off':''}"><div class="nm">${chk(x,i)}${esc(x.name)} <span class="note" style="font-weight:400">· 자동 ${md(x.date)}${x.stale?' (조회 실패, 직전 값)':''}</span></div>
+      <div class="iv"><span>기준 고점 <b class="num">${fmtIdx(x.peak)}</b> <span class="note">(${md(x.peakDate)})</span></span><span>현재 <b class="num">${fmtIdx(x.cur)}</b></span></div>
+      <span class="dd" id="ixdd-${i}">–</span></div>`
+   : `<div class="idx"><span class="nm">${chk(x,i)}${esc(x.name)}${x.updated?` <span class="note" style="font-weight:400">· ${esc(x.updated)} 입력</span>`:''}</span>
     <label>전고점<input type="number" inputmode="decimal" step="any" id="ix-${i}-peak" data-ix="${i}" data-k="peak" value="${x.peak??''}" placeholder="최고 종가"></label>
     <label>현재<input type="number" inputmode="decimal" step="any" id="ix-${i}-cur" data-ix="${i}" data-k="cur" value="${x.cur??''}" placeholder="오늘 지수"></label>
     <span class="dd" id="ixdd-${i}">–</span></div>`).join('');
+  $('stSaveIdx').hidden=rows.every(x=>x.auto);
   $('stTrig').innerHTML='<legend>전환 조건 (고점 대비 %)</legend>'+ST.stages.map((s,i)=>i===0?'':`<label>${esc(s.name)}<input type="number" inputmode="decimal" step="any" id="tg-${i}" value="${n(s.trigger)}"></label>`).join('');
   $('stManual').innerHTML=ST.stages.map((s,i)=>`<button class="btn ghost" type="button" data-man="${i}">${esc(s.name.split(' ')[0])}로 지정</button>`).join('');
   $('stLog').innerHTML=(ST.log||[]).slice().reverse().map(l=>`<li><span class="d">${esc(l.date)}</span><span>${esc(l.name)}${l.note?` · ${esc(l.note)}`:''}</span></li>`).join('')||'<li class="note">아직 전환 기록이 없습니다.</li>';
@@ -821,7 +841,7 @@ function stRenderAll(){
 }
 function stCalc(){
   if(!ST) return; const e=stEval(), S2=ST.stages;
-  e.dds.forEach((v,i)=>{const el=$('ixdd-'+i); if(!el) return; el.textContent=v===null?'–':(v>0?'+':'')+v.toFixed(1)+'%';
+  e.ddAll.forEach((v,i)=>{const el=$('ixdd-'+i); if(!el) return; el.textContent=v===null?'–':(v>0?'+':'')+v.toFixed(1)+'%';
     el.className='dd'+(v!==null&&S2[2]&&v<=n(S2[2].trigger)?' bad':v!==null&&S2[1]&&v<=n(S2[1].trigger)?' warn':'')});
   $('stStages').innerHTML=S2.map((s,i)=>`<div class="stage ${i===e.act?'on':''} ${i===e.target&&i!==e.act?'next':''}"><span class="t">${esc(s.name)}</span><span class="c">${i===0?'기본 단계':`고점 대비 ${n(s.trigger)}%`}</span></div>`).join('');
   const sig=$('stSignal'), btn=$('stApply'), home=$('stHome'); let homeTxt='';
@@ -832,20 +852,24 @@ function stCalc(){
     btn.disabled=false; btn.textContent= e.due? `${S2[0].name} 전환 적용` : `${S2[0].name} 미리 적용`;
     if(e.due) homeTxt=`오늘은 연금계좌 ${S2[0].name} 전환일입니다. 리밸런싱 탭에서 적용하세요.`;
   } else if(e.target>e.act){
-    const who=stIdx.map((x,i)=>e.dds[i]!==null&&e.dds[i]<=n(S2[e.target].trigger)?`${x.name} ${e.dds[i].toFixed(1)}%`:null).filter(Boolean).join(', ');
+    const who=e.rows.map((x,i)=>e.dds[i]!==null&&e.dds[i]<=n(S2[e.target].trigger)?`${x.name} ${e.dds[i].toFixed(1)}%`:null).filter(Boolean).join(', ');
     sig.className='chip bad'; sig.textContent=`${who} · ${S2[e.target].name} 조건 충족`;
     btn.disabled=false; btn.textContent=`${S2[e.target].name} 적용`;
     homeTxt=`${who}: 연금계좌 ${S2[e.target].name} 조건을 충족했습니다. 리밸런싱 탭에서 확인하세요.`;
   } else {
     sig.className='chip good';
-    sig.textContent= e.worst===null? `현재 ${S2[e.act].name} · 지수를 입력하면 전환 조건을 확인합니다` : `현재 ${S2[e.act].name} 유지 · 최대 낙폭 ${e.worst.toFixed(1)}%`;
+    sig.textContent= e.worst===null? `현재 ${S2[e.act].name} · 조건에 쓸 지수가 없습니다` : `현재 ${S2[e.act].name} 유지 · 조건 지수 최대 낙폭 ${e.worst.toFixed(1)}%`;
     btn.disabled=true; btn.textContent= e.act>=S2.length-1? '마지막 단계입니다':'전환 조건 미충족';
   }
   btn.dataset.armed='';
   home.hidden=!homeTxt; home.textContent=homeTxt;
   const tr=S2.slice(1).map(s=>`${n(s.trigger)}% 이하면 ${s.name}`).join(', ');
-  $('stRule').textContent=`두 지수 중 하나라도 전고점 대비 ${tr}입니다. 단계는 올라가기만 하고, 50세(${S.birthYear+50}년) 전에는 되돌리지 않습니다. 적용하면 연금저축·IRP의 목표 %가 그 단계 값으로 바뀝니다. 현재값이 전고점보다 높으면 저장할 때 전고점이 자동으로 바뀝니다.`;
+  const used=e.rows.filter(x=>x.use!==false).map(x=>x.name).join('·')||'없음';
+  $('stRule').textContent=`체크한 지수(${used}) 중 하나라도 기준 고점 대비 ${tr}입니다. 기준 고점은 처음에 최근 52주 최고 종가로 시작하고, 그보다 높은 종가가 나오면 자동으로 올라갑니다(내려가지 않음). 지수는 평일 장 마감 후 자동 갱신됩니다. 단계는 올라가기만 하고, 50세(${S.birthYear+50}년) 전에는 되돌리지 않습니다.`;
 }
+$('stIdx').addEventListener('change',e=>{const t=e.target; if(t.dataset.use===undefined) return;
+  stIdx[+t.dataset.use].use=t.checked; stCalc(); stWrite({...ST,indices:clone(stIdx)}, t.checked?'이 지수를 전환 조건에 사용합니다.':'이 지수를 전환 조건에서 뺐습니다.');
+});
 $('stIdx').addEventListener('input',e=>{const t=e.target; if(t.dataset.ix===undefined) return; stIdx[+t.dataset.ix][t.dataset.k]= t.value===''?null:n(t.value); stCalc()});
 async function stWrite(next,ok){
   if(!DB) return msg($('stMsg'),'저장소에 연결되지 않았습니다.',true);
@@ -879,7 +903,7 @@ async function stApplyStage(stage,note){
 $('stApply').addEventListener('click',()=>{
   const b=$('stApply'); if(!ST||b.disabled) return; const e=stEval();
   if(b.dataset.armed!=='1'){b.dataset.armed='1';b.textContent='한 번 더 누르면 적용';return}
-  const note= e.act<0? (e.sch?`${mdTxt(e.sch.date)} 예정 전환`:'예정 전환') : stIdx.map((x,i)=>e.dds[i]===null?null:`${x.name} ${e.dds[i].toFixed(1)}%`).filter(Boolean).join(', ');
+  const note= e.act<0? (e.sch?`${mdTxt(e.sch.date)} 예정 전환`:'예정 전환') : e.rows.map((x,i)=>e.dds[i]===null?null:`${x.name} ${e.dds[i].toFixed(1)}%`).filter(Boolean).join(', ');
   stApplyStage(e.target,note);
 });
 $('stManual').addEventListener('click',e=>{
