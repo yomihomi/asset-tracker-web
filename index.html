@@ -145,9 +145,11 @@ input:disabled{opacity:.75}
   <div class="card">
     <h1>은퇴시점 트래커</h1>
     <form id="unlockForm" novalidate hidden>
-      <label>보기 비밀번호<input type="password" id="u-pw" autocomplete="current-password" required></label>
+      <div id="u-pinBox" hidden><label>간편 PIN<input type="password" inputmode="numeric" id="u-pin" autocomplete="off"></label></div>
+      <div id="u-pwBox"><label>보기 비밀번호<input type="password" id="u-pw" autocomplete="current-password"></label></div>
       <button class="btn" type="submit" id="u-btn">열기</button>
       <p class="toast" id="u-msg" role="status"></p>
+      <button class="btn ghost" type="button" id="u-toggle" hidden>긴 비밀번호로 열기</button>
       <button class="btn ghost" type="button" id="u-reset">이 기기 설정 다시 하기</button>
     </form>
     <form id="setupForm" novalidate hidden>
@@ -159,12 +161,13 @@ input:disabled{opacity:.75}
       </fieldset>
       <fieldset>
         <legend>보기 (필수)</legend>
-        <label class="full">보기 비밀번호<input type="password" id="s1-vpw" autocomplete="new-password"></label>
+        <label class="full">보기 비밀번호 (8자 이상, Actions 시크릿 DATA_PASSWORD 와 같게)<input type="password" id="s1-vpw" autocomplete="new-password"></label>
         <label class="full">읽기 토큰 (Contents: Read-only)<input type="password" id="s1-rtok" autocomplete="off" placeholder="github_pat_…"></label>
+        <label class="full">간편 PIN (선택, 6자리 이상 · 이 기기에서만 사용)<input type="password" inputmode="numeric" id="s1-pin" autocomplete="off"></label>
       </fieldset>
       <fieldset>
         <legend>수정 (이 기기에서 입력·저장하려면)</legend>
-        <label class="full">수정 비밀번호<input type="password" id="s1-epw" autocomplete="new-password"></label>
+        <label class="full">수정 비밀번호 (8자 이상, 보기 비밀번호와 다르게)<input type="password" id="s1-epw" autocomplete="new-password"></label>
         <label class="full">쓰기 토큰 (Contents: Read and write, Actions: Read and write)<input type="password" id="s1-wtok" autocomplete="off" placeholder="github_pat_…"></label>
       </fieldset>
       <fieldset id="seedBox" hidden>
@@ -432,6 +435,13 @@ input:disabled{opacity:.75}
         <div class="row"><button class="btn" type="submit" id="setSave">가정 저장</button></div>
         <p class="toast" id="setMsg" role="status"></p>
       </form>
+      <fieldset>
+        <legend>간편 PIN (이 기기)</legend>
+        <label>새 PIN (6자리 이상)<input type="password" inputmode="numeric" id="p-new" autocomplete="off"></label>
+        <label>한 번 더<input type="password" inputmode="numeric" id="p-new2" autocomplete="off"></label>
+      </fieldset>
+      <div class="row"><button class="btn ghost" type="button" id="pinSet">PIN 설정·변경</button><button class="btn ghost" type="button" id="pinOff">PIN 해제</button></div>
+      <p class="toast" id="pinMsg" role="status"></p>
       <div class="row"><button class="btn ghost" type="button" id="lockBtn">지금 잠그기</button><button class="btn danger" type="button" id="forgetBtn">이 기기 설정 지우기</button></div>
       <p class="note" id="devInfo"></p>
       <p class="note">고정 저축은 회사를 그만두거나 수입이 줄어도 유지할 수 있는 최소 납입액입니다. 기타 추가 적립은 입력한 기록의 최근 평균으로 자동 계산합니다. 세금과 건강보험료는 월 생활비 안에 포함된 것으로 봅니다.</p>
@@ -1063,7 +1073,11 @@ $('fillFromAcct').addEventListener('click',()=>{
 
 /* 잠금 · 설정 화면 */
 function loadCfg(){try{return JSON.parse(localStorage.getItem(CFG_KEY)||'null')}catch{return null}}
-function showGate(mode){ $('gate').hidden=false; $('app').hidden=true; $('nav').hidden=true; $('unlockForm').hidden=mode!=='unlock'; $('setupForm').hidden=mode!=='setup'; if(mode==='unlock') setTimeout(()=>$('u-pw').focus(),50) }
+function saveCfg(){try{localStorage.setItem(CFG_KEY,JSON.stringify(GH.cfg))}catch{}}
+const PIN_MAX=5; let pinMode=false;
+function setPinMode(on){ pinMode=on&&!!GH.cfg?.pinWrap; $('u-pinBox').hidden=!pinMode; $('u-pwBox').hidden=pinMode; $('u-toggle').hidden=!GH.cfg?.pinWrap; $('u-toggle').textContent=pinMode?'긴 비밀번호로 열기':'PIN으로 열기'; setTimeout(()=>$(pinMode?'u-pin':'u-pw').focus(),50) }
+const smsg=(t,err)=>{msg($('s1-msg'),t,err); $('s1-msg').scrollIntoView({block:'center',behavior:'smooth'})};
+function showGate(mode){ $('gate').hidden=false; $('app').hidden=true; $('nav').hidden=true; $('unlockForm').hidden=mode!=='unlock'; $('setupForm').hidden=mode!=='setup'; if(mode==='unlock') setPinMode(true) }
 function openApp(){
   $('gate').hidden=true; $('app').hidden=false; $('nav').hidden=false;
   $('devInfo').textContent=`저장소 ${GH.repo} (${GH.branch}) · 이 기기: ${GH.cfg.writeTok?'보기·수정 가능 (수정할 때 수정 비밀번호 확인)':'보기 전용'}`;
@@ -1089,46 +1103,67 @@ function startApp(){
   renderAsset();
 }
 $('unlockForm').addEventListener('submit',async e=>{
-  e.preventDefault(); const pw=$('u-pw').value; $('u-btn').disabled=true; msg($('u-msg'),'여는 중…');
+  e.preventDefault(); $('u-btn').disabled=true; msg($('u-msg'),'여는 중…');
   try{
+    let pw=$('u-pw').value;
+    if(pinMode){
+      try{ pw=await openWeb(GH.cfg.pinWrap,$('u-pin').value); GH.cfg.pinFail=0; saveCfg() }
+      catch{
+        GH.cfg.pinFail=(GH.cfg.pinFail||0)+1; $('u-pin').value='';
+        if(GH.cfg.pinFail>=PIN_MAX){ delete GH.cfg.pinWrap; GH.cfg.pinFail=0; saveCfg(); setPinMode(false); throw Object.assign(new Error('pin'),{code:'pinlock'}) }
+        saveCfg(); throw Object.assign(new Error('pin'),{code:'pin'});
+      }
+    }
     let tok; try{ tok=await openWeb(GH.cfg.readTok,pw) }catch{ throw Object.assign(new Error('pw'),{code:'pw'}) }
-    GH.readTok=tok; GH.viewPw=pw; await loadAll(); $('u-pw').value=''; msg($('u-msg'),''); openApp();
-  }catch(err){ msg($('u-msg'), err.code==='pw'?'보기 비밀번호가 맞지 않습니다.': err.code==='no_state'?'저장소에 데이터가 없습니다. 이 기기 설정을 다시 하면서 초기 데이터를 올리세요.': err.name==='OperationError'?'저장소 데이터를 이 비밀번호로 열 수 없습니다.' : ghErrText(err),true) }
+    GH.readTok=tok; GH.viewPw=pw; await loadAll(); $('u-pw').value=''; $('u-pin').value=''; msg($('u-msg'),''); openApp();
+  }catch(err){ msg($('u-msg'), err.code==='pin'?`PIN이 맞지 않습니다. (${GH.cfg.pinFail}/${PIN_MAX}회 · ${PIN_MAX}회 틀리면 PIN이 해제됩니다)`: err.code==='pinlock'?`PIN을 ${PIN_MAX}번 틀려 이 기기의 PIN을 해제했습니다. 긴 보기 비밀번호로 여세요.`: err.code==='pw'?'보기 비밀번호가 맞지 않습니다.': err.code==='no_state'?'저장소에 데이터가 없습니다. 이 기기 설정을 다시 하면서 초기 데이터를 올리세요.': err.name==='OperationError'?'저장소 데이터를 이 비밀번호로 열 수 없습니다.' : ghErrText(err),true) }
   finally{ $('u-btn').disabled=false }
 });
 $('u-reset').addEventListener('click',()=>showGate('setup'));
+$('u-toggle').addEventListener('click',()=>{msg($('u-msg'),''); setPinMode(!pinMode)});
 $('setupForm').addEventListener('submit',async e=>{
   e.preventDefault();
   const repo=$('s1-repo').value.trim().replace(/^https:\/\/github\.com\//,'').replace(/\/$/,''), branch=$('s1-branch').value.trim()||'main';
-  const vpw=$('s1-vpw').value, rtok=$('s1-rtok').value.trim(), epw=$('s1-epw').value, wtok=$('s1-wtok').value.trim();
-  if(!/^[\w.-]+\/[\w.-]+$/.test(repo)) return msg($('s1-msg'),'저장소를 "소유자/이름" 형식으로 입력하세요.',true);
-  if(vpw.length<8||!rtok) return msg($('s1-msg'),'보기 비밀번호(8자 이상)와 읽기 토큰을 입력하세요.',true);
-  if(wtok&&epw.length<8) return msg($('s1-msg'),'쓰기 토큰을 넣었다면 수정 비밀번호(8자 이상)도 입력하세요.',true);
-  if(wtok&&epw===vpw) return msg($('s1-msg'),'수정 비밀번호는 보기 비밀번호와 다르게 정하세요.',true);
-  $('s1-btn').disabled=true; msg($('s1-msg'),'저장소를 확인하는 중…');
+  const vpw=$('s1-vpw').value, rtok=$('s1-rtok').value.trim(), epw=$('s1-epw').value, wtok=$('s1-wtok').value.trim(), pin=$('s1-pin').value;
+  if(!/^[\w.-]+\/[\w.-]+$/.test(repo)) return smsg('저장소를 "소유자/이름" 형식으로 입력하세요.',true);
+  if(vpw.length<8||!rtok) return smsg('보기 비밀번호(8자 이상)와 읽기 토큰을 입력하세요.',true);
+  if(wtok&&epw.length<8) return smsg('쓰기 토큰을 넣었다면 수정 비밀번호(8자 이상)도 입력하세요.',true);
+  if(wtok&&epw===vpw) return smsg('수정 비밀번호는 보기 비밀번호와 다르게 정하세요.',true);
+  if(pin&&pin.length<6) return smsg('간편 PIN은 6자리 이상으로 정하세요.',true);
+  if(pin&&(pin===vpw||pin===epw)) return smsg('간편 PIN은 비밀번호들과 다르게 정하세요.',true);
+  $('s1-btn').disabled=true; smsg('저장소를 확인하는 중…');
   try{
     Object.assign(GH,{repo,branch,readTok:rtok,viewPw:vpw,writeTok:wtok||null});
     const st=await getFile('data/state.enc.json');
     if(!st){
       $('seedBox').hidden=false;
       const f=$('s1-seed').files[0];
-      if(!f) return msg($('s1-msg'),'저장소에 데이터가 없습니다. seed.json 파일을 선택한 뒤 다시 누르세요.',true);
-      if(!wtok) return msg($('s1-msg'),'초기 데이터를 올리려면 쓰기 토큰이 필요합니다.',true);
-      const seed=JSON.parse(await f.text()); if(!seed.state?.portfolios) return msg($('s1-msg'),'seed.json 형식이 아닙니다.',true);
-      msg($('s1-msg'),'초기 데이터를 암호화해서 올리는 중…');
+      if(!f) return smsg('저장소에 데이터가 없습니다. seed.json 파일을 선택한 뒤 다시 누르세요.',true);
+      if(!wtok) return smsg('초기 데이터를 올리려면 쓰기 토큰이 필요합니다.',true);
+      const seed=JSON.parse(await f.text()); if(!seed.state?.portfolios) return smsg('seed.json 형식이 아닙니다.',true);
+      smsg('초기 데이터를 암호화해서 올리는 중…');
       await putFile('data/state.enc.json',await sealWeb(seed.state,vpw),null,'초기 데이터');
       if(seed.daily) await putFile('data/daily.enc.json',await sealWeb(seed.daily,vpw),(await getFile('data/daily.enc.json'))?.sha,'엑셀 일별 기록');
       $('s1-seed').value='';
     } else {
-      try{ await openWeb(st.env,vpw) }catch{ return msg($('s1-msg'),'보기 비밀번호가 저장소 데이터의 비밀번호와 다릅니다.',true) }
+      try{ await openWeb(st.env,vpw) }catch{ return smsg('보기 비밀번호가 저장소 데이터의 비밀번호와 다릅니다.',true) }
     }
-    const cfg={repo,branch,readTok:await sealWeb(rtok,vpw,true),writeTok:wtok?await sealWeb(wtok,epw,true):null};
+    const cfg={repo,branch,readTok:await sealWeb(rtok,vpw,true),writeTok:wtok?await sealWeb(wtok,epw,true):null}; if(pin) cfg.pinWrap=await sealWeb(vpw,pin,true);
     try{localStorage.setItem(CFG_KEY,JSON.stringify(cfg))}catch{}
-    GH.cfg=cfg; GH.writeTok=null; ['s1-vpw','s1-rtok','s1-epw','s1-wtok'].forEach(i=>$(i).value='');
-    await loadAll(); msg($('s1-msg'),''); openApp();
-  }catch(err){ msg($('s1-msg'),ghErrText(err),true) }
+    GH.cfg=cfg; GH.writeTok=null; ['s1-vpw','s1-rtok','s1-epw','s1-wtok','s1-pin'].forEach(i=>$(i).value='');
+    await loadAll(); smsg(''); openApp();
+  }catch(err){ smsg(ghErrText(err),true) }
   finally{ $('s1-btn').disabled=false }
 });
+$('pinSet').addEventListener('click',async()=>{
+  const a=$('p-new').value, b=$('p-new2').value;
+  if(a.length<6) return msg($('pinMsg'),'PIN은 6자리 이상으로 정하세요.',true);
+  if(a!==b) return msg($('pinMsg'),'두 PIN이 같지 않습니다.',true);
+  if(a===GH.viewPw) return msg($('pinMsg'),'PIN은 보기 비밀번호와 다르게 정하세요.',true);
+  GH.cfg.pinWrap=await sealWeb(GH.viewPw,a,true); GH.cfg.pinFail=0; saveCfg(); $('p-new').value=''; $('p-new2').value='';
+  msg($('pinMsg'),'이 기기의 간편 PIN을 설정했습니다. 다음부터 PIN으로 열 수 있습니다.');
+});
+$('pinOff').addEventListener('click',()=>{ delete GH.cfg.pinWrap; GH.cfg.pinFail=0; saveCfg(); msg($('pinMsg'),'PIN을 해제했습니다. 다음부터 긴 보기 비밀번호로 엽니다.') });
 $('lockBtn').addEventListener('click',()=>location.reload());
 $('forgetBtn').addEventListener('click',()=>{const b=$('forgetBtn'); if(b.dataset.armed!=='1'){b.dataset.armed='1';b.textContent='한 번 더 누르면 지웁니다';return} try{localStorage.removeItem(CFG_KEY)}catch{} location.reload()});
 
