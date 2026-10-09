@@ -1,0 +1,1138 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<meta name="referrer" content="no-referrer">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="은퇴트래커">
+<title>은퇴시점 트래커</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap">
+<style>
+/* Layout: 한 줄 모바일 앱. 위에서부터 판정 → 목표 갭 → 나이 눈금 → 시뮬레이션 → 실적, 하단 고정 탭바 */
+:root{
+  --bg:#f3f5f4; --surface:#ffffff; --ink:#15201d; --muted:#5d6b67; --line:#dbe2df;
+  --accent:#1f6f5c; --accent-soft:#e3f0eb; --warn:#b4690e; --warn-soft:#fbefdc; --bad:#b3372f; --bad-soft:#f8e4e2; --good:#2c7a4b;
+  --font-body:"IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+  --font-num:"IBM Plex Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
+  --r:12px;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0f1513; --surface:#18201d; --ink:#e6ece9; --muted:#97a6a1; --line:#2a3531;
+  --accent:#5fbf9f; --accent-soft:#1d3029; --warn:#e3a14a; --warn-soft:#33281a; --bad:#ec7b72; --bad-soft:#3a201e; --good:#6cc08b; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0f1513; --surface:#18201d; --ink:#e6ece9; --muted:#97a6a1; --line:#2a3531;
+  --accent:#5fbf9f; --accent-soft:#1d3029; --warn:#e3a14a; --warn-soft:#33281a; --bad:#ec7b72; --bad-soft:#3a201e; --good:#6cc08b; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--font-body);font-size:15px;line-height:1.55}
+.wrap{max-width:680px;margin:0 auto;padding-inline:16px;padding-block:16px 96px;display:flex;flex-direction:column;gap:14px}
+header.top{display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap}
+header.top h1{font-size:19px;margin:0;font-weight:700;letter-spacing:-.01em}
+header.top .asof{color:var(--muted);font-size:13px}
+.num{font-family:var(--font-num);font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:16px;display:flex;flex-direction:column;gap:12px;min-width:0}
+.card h2{font-size:13px;font-weight:600;color:var(--muted);margin:0;letter-spacing:.04em}
+.hero .big{font-size:40px;font-weight:600;line-height:1.1}
+.hero .big small{font-size:18px;color:var(--muted);font-weight:500;margin-left:4px}
+.chip{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:600;padding:3px 10px;border-radius:999px;width:fit-content}
+.chip.good{background:var(--accent-soft);color:var(--good)} .chip.warn{background:var(--warn-soft);color:var(--warn)} .chip.bad{background:var(--bad-soft);color:var(--bad)}
+.seg{display:flex;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:3px;gap:3px}
+.seg button{flex:1;border:0;background:transparent;color:var(--muted);font:inherit;font-size:14px;padding:7px 4px;border-radius:7px;cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--surface);color:var(--ink);font-weight:600;box-shadow:0 1px 2px rgb(0 0 0 / .08)}
+.seg button:disabled{opacity:.4;cursor:not-allowed}
+.kv{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px}
+.kv > div{display:flex;flex-direction:column;gap:2px;min-width:0}
+.kv .k{font-size:12.5px;color:var(--muted)} .kv .v{font-size:17px;font-weight:600}
+.note{font-size:12.5px;color:var(--muted);margin:0}
+.bar{height:8px;background:var(--bg);border-radius:99px;overflow:hidden;border:1px solid var(--line)}
+.bar > i{display:block;height:100%;background:var(--accent);border-radius:99px}
+.gap-line{display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap}
+.gap-line .v{font-size:26px;font-weight:600}
+svg{display:block;width:100%;height:auto;max-width:100%}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12.5px;color:var(--muted)}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.legend i{width:14px;height:3px;border-radius:2px;display:inline-block}
+.table-wrap{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:13.5px}
+th,td{padding:8px 6px;text-align:right;border-bottom:1px solid var(--line);white-space:nowrap}
+th:first-child,td:first-child{text-align:left}
+th{color:var(--muted);font-weight:500;font-size:12.5px}
+td.pos{color:var(--good)} td.neg{color:var(--bad)}
+tr.clickable{cursor:pointer} tr.clickable:hover td{background:var(--accent-soft)}
+form{display:flex;flex-direction:column;gap:14px}
+fieldset{border:0;padding:0;margin:0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 12px}
+fieldset legend{grid-column:1/-1;font-size:13px;font-weight:600;color:var(--muted);margin-bottom:4px;padding:0}
+label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--muted);min-width:0}
+label.full{grid-column:1/-1}
+input{font:inherit;font-family:var(--font-num);font-size:16px;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:10px 11px;width:100%;min-width:0}
+input[type=text]{font-family:var(--font-body)}
+input:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.btn{font:inherit;font-weight:600;border-radius:10px;padding:12px 16px;border:1px solid var(--accent);background:var(--accent);color:var(--surface);cursor:pointer}
+.btn.ghost{background:transparent;color:var(--accent)}
+.btn.danger{background:transparent;border-color:var(--bad);color:var(--bad)}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.row > .btn{flex:1}
+.toast{font-size:13.5px;color:var(--good);min-height:1.4em;margin:0}
+.toast.err{color:var(--bad)}
+.banner{background:var(--warn-soft);color:var(--warn);border-radius:10px;padding:10px 12px;font-size:13.5px}
+.empty{color:var(--muted);text-align:center;padding:28px 8px}
+nav.tabs{position:fixed;left:0;right:0;bottom:0;background:var(--surface);border-top:1px solid var(--line);display:flex;justify-content:center;padding:6px 8px calc(6px + env(safe-area-inset-bottom, 0px));z-index:5}
+nav.tabs .in{display:flex;gap:4px;max-width:680px;width:100%}
+nav.tabs button{flex:1;border:0;background:transparent;font:inherit;font-size:13.5px;color:var(--muted);padding:9px 4px;border-radius:9px;cursor:pointer}
+nav.tabs button[aria-current="page"]{color:var(--accent);font-weight:700;background:var(--accent-soft)}
+.wrap-seg{flex-wrap:wrap}
+.wrap-seg button{flex:1 0 auto;min-width:64px}
+.items{display:flex;flex-direction:column;gap:10px}
+.item{border:1px solid var(--line);border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:8px;background:var(--bg)}
+.item.drift{border-color:var(--warn)}
+.item-h{display:flex;gap:8px;align-items:center}
+.item-h input{font-family:var(--font-body);font-weight:600;font-size:15px;background:transparent;border-color:transparent;padding:4px 6px}
+.item-h input:focus{border-color:var(--line);background:var(--surface)}
+.item-h button{border:0;background:transparent;color:var(--muted);font-size:18px;cursor:pointer;padding:4px 8px;border-radius:6px;flex:none}
+.item-h button[data-armed="1"]{color:var(--bad);font-size:13px;font-weight:600}
+.item-g{display:grid;grid-template-columns:.8fr 1fr 1.2fr;gap:8px}
+.item-g input{padding:8px 9px;font-size:15px;background:var(--surface)}
+.item-r{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;font-size:13.5px;color:var(--muted)}
+.item-r b{font-weight:600;color:var(--ink)}
+.item-r b.buy{color:var(--good)} .item-r b.sell{color:var(--bad)}
+.stages{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+.stage{border:1px solid var(--line);border-radius:10px;padding:8px 10px;display:flex;flex-direction:column;gap:2px;min-width:0}
+.stage .t{font-size:13.5px;font-weight:600} .stage .c{font-size:12px;color:var(--muted)}
+.stage.on{border-color:var(--accent);background:var(--accent-soft)} .stage.on .t{color:var(--accent)}
+.stage.next{border-color:var(--warn);border-style:dashed}
+.idx-grid{display:flex;flex-direction:column;gap:10px}
+.idx{display:grid;grid-template-columns:1fr 1fr auto;gap:8px;align-items:end}
+.idx .nm{grid-column:1/-1;font-size:13px;font-weight:600}
+.idx .dd{font-family:var(--font-num);font-size:16px;font-weight:600;min-width:64px;text-align:right;padding-bottom:9px}
+.idx .dd.warn{color:var(--warn)} .idx .dd.bad{color:var(--bad)}
+details.more{border-top:1px solid var(--line);padding-top:10px}
+details.more summary{cursor:pointer;font-size:13.5px;color:var(--muted)}
+.more-in{display:flex;flex-direction:column;gap:10px;padding-top:10px}
+ul.log{margin:8px 0 0;padding:0;list-style:none;display:flex;flex-direction:column;gap:6px;font-size:13.5px}
+ul.log li{display:flex;gap:10px} ul.log .d{font-family:var(--font-num);color:var(--muted);flex:none}
+.item-ws{font-size:12.5px;color:var(--muted)}
+.item-ws input{font-size:14px;padding:6px 8px;margin-top:2px;background:var(--surface)}
+:root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+body{margin:0}
+[hidden]{display:none!important}
+.gate{min-height:100vh;display:flex;align-items:flex-start;justify-content:center;padding-inline:16px;padding-block:12vh 32px}
+.gate .card{max-width:440px;width:100%}
+.gate h1{font-size:21px;margin:0}
+select{font:inherit;font-size:15px;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:9px;padding:8px 9px;width:100%;min-width:0}
+.dlg{position:fixed;inset:0;background:rgb(0 0 0 / .45);display:flex;align-items:center;justify-content:center;padding-inline:16px;z-index:20}
+.dlg .card{max-width:400px;width:100%}
+.item-meta{display:grid;grid-template-columns:1fr 1.2fr;gap:8px}
+.item-meta input,.item-meta select{padding:6px 8px;font-size:14px}
+.auto-tag{font-size:11.5px;color:var(--accent);font-weight:600}
+input:disabled{opacity:.75}
+.acct{display:flex;justify-content:space-between;gap:10px;align-items:baseline;padding:9px 0;border-bottom:1px solid var(--line)}
+.acct:last-child{border-bottom:0}
+.acct .nm{font-weight:600;min-width:0}
+.acct .vv{text-align:right;display:flex;flex-direction:column;align-items:flex-end}
+.acct .dv{font-size:12.5px}
+.pos{color:var(--good)} .neg{color:var(--bad)}
+@media (prefers-reduced-motion: no-preference){.bar > i{transition:width .4s ease}}
+</style>
+</head>
+<body>
+
+<!-- 잠금 · 초기 설정 -->
+<div class="gate" id="gate">
+  <div class="card">
+    <h1>은퇴시점 트래커</h1>
+    <form id="unlockForm" novalidate hidden>
+      <label>보기 비밀번호<input type="password" id="u-pw" autocomplete="current-password" required></label>
+      <button class="btn" type="submit" id="u-btn">열기</button>
+      <p class="toast" id="u-msg" role="status"></p>
+      <button class="btn ghost" type="button" id="u-reset">이 기기 설정 다시 하기</button>
+    </form>
+    <form id="setupForm" novalidate hidden>
+      <p class="note">이 기기에서 처음 여는 경우 한 번만 입력합니다. 토큰은 비밀번호로 암호화되어 이 기기 브라우저에만 저장됩니다.</p>
+      <fieldset>
+        <legend>저장소</legend>
+        <label class="full">소유자/저장소 이름<input type="text" id="s1-repo" placeholder="예: myname/asset-tracker" autocapitalize="off" autocomplete="off"></label>
+        <label class="full">브랜치<input type="text" id="s1-branch" value="main" autocapitalize="off"></label>
+      </fieldset>
+      <fieldset>
+        <legend>보기 (필수)</legend>
+        <label class="full">보기 비밀번호<input type="password" id="s1-vpw" autocomplete="new-password"></label>
+        <label class="full">읽기 토큰 (Contents: Read-only)<input type="password" id="s1-rtok" autocomplete="off" placeholder="github_pat_…"></label>
+      </fieldset>
+      <fieldset>
+        <legend>수정 (이 기기에서 입력·저장하려면)</legend>
+        <label class="full">수정 비밀번호<input type="password" id="s1-epw" autocomplete="new-password"></label>
+        <label class="full">쓰기 토큰 (Contents: Read and write, Actions: Read and write)<input type="password" id="s1-wtok" autocomplete="off" placeholder="github_pat_…"></label>
+      </fieldset>
+      <fieldset id="seedBox" hidden>
+        <legend>초기 데이터 (저장소에 아직 데이터가 없습니다)</legend>
+        <label class="full">seed.json 파일 선택<input type="file" id="s1-seed" accept=".json,application/json"></label>
+      </fieldset>
+      <button class="btn" type="submit" id="s1-btn">설정 저장</button>
+      <p class="toast" id="s1-msg" role="status"></p>
+    </form>
+  </div>
+</div>
+
+<!-- 수정 비밀번호 확인 -->
+<div class="dlg" id="wdlg" hidden>
+  <form class="card" id="wForm" novalidate>
+    <h2>수정 비밀번호</h2>
+    <p class="note" id="w-why">변경 내용을 저장하려면 수정 비밀번호가 필요합니다. 이 화면을 닫거나 잠글 때까지 다시 묻지 않습니다.</p>
+    <input type="password" id="w-pw" autocomplete="current-password">
+    <div class="row"><button class="btn ghost" type="button" id="w-cancel">취소</button><button class="btn" type="submit">확인</button></div>
+    <p class="toast" id="w-msg" role="status"></p>
+  </form>
+</div>
+
+<div class="wrap" id="app" hidden>
+  <header class="top">
+    <h1>은퇴시점 트래커</h1>
+    <span class="asof" id="asof">기록을 불러오는 중</span>
+  </header>
+  <div class="banner" id="dbBanner" hidden></div>
+
+  <!-- 현황 -->
+  <section id="tab-home" class="wrap-inner" style="display:flex;flex-direction:column;gap:14px">
+    <div class="banner" id="stHome" hidden></div>
+    <div class="card hero">
+      <h2>예상 은퇴 가능 시점</h2>
+      <div class="seg" role="group" aria-label="수익률 시나리오">
+        <button type="button" id="sc-base" data-sc="base" aria-pressed="true">기준</button>
+        <button type="button" id="sc-cons" data-sc="cons" aria-pressed="false">보수</button>
+        <button type="button" id="sc-real" data-sc="real" aria-pressed="false">실적</button>
+      </div>
+      <div class="big num" id="heroAge">–</div>
+      <span class="chip warn" id="heroChip">계산 중</span>
+      <div class="kv">
+        <div><span class="k">현재 저축 속도</span><span class="v num" id="kvPace">–</span></div>
+        <div><span class="k">고정 저축만 유지 시</span><span class="v num" id="kvFixed">–</span></div>
+        <div><span class="k">적용 수익률 (은퇴 전/후)</span><span class="v num" id="kvRate">–</span></div>
+      </div>
+      <p class="note" id="heroNote">월 생활비를 95세까지 쓸 수 있는 가장 이른 시점입니다. 금액은 모두 오늘 가치 기준입니다.</p>
+    </div>
+
+    <div class="card">
+      <h2 id="gapTitle">55세 은퇴를 위한 추가 적립</h2>
+      <div class="gap-line">
+        <div><div class="note">필요 (연금·DC 외 매월)</div><div class="v num" id="needSave">–</div></div>
+        <div style="text-align:right"><div class="note">최근 평균</div><div class="v num" id="curSave">–</div></div>
+      </div>
+      <div class="bar" aria-hidden="true"><i id="saveBar" style="width:0%"></i></div>
+      <span class="chip warn" id="gapChip">–</span>
+      <div class="kv">
+        <div><span class="k" id="kNeedAsset">55세 필요 자산</span><span class="v num" id="needAsset">–</span></div>
+        <div><span class="k" id="kProjAsset">55세 예상 자산</span><span class="v num" id="projAsset">–</span></div>
+        <div><span class="k" id="kMaxSpend">55세 은퇴 시 가능 월 생활비</span><span class="v num" id="maxSpend">–</span></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>나이별 자산 시뮬레이션 (오늘 가치, 억원)</h2>
+      <div class="legend">
+        <span><i style="background:var(--warn)"></i>현재 속도로 목표 나이 은퇴</span>
+        <span><i style="background:var(--accent)"></i>필요 적립 시 목표 나이 은퇴</span>
+      </div>
+      <div id="projChart" role="img" aria-label="나이별 예상 자산 그래프"></div>
+      <p class="note" id="projNote"></p>
+    </div>
+
+    <div class="card">
+      <h2>투자 실적</h2>
+      <div class="kv">
+        <div><span class="k">현재 금융자산</span><span class="v num" id="rNow">–</span></div>
+        <div><span class="k">기록 기간 적립</span><span class="v num" id="rAdd">–</span></div>
+        <div><span class="k">기록 기간 투자손익</span><span class="v num" id="rGain">–</span></div>
+        <div><span class="k">연환산 수익률</span><span class="v num" id="rTwr">–</span></div>
+      </div>
+      <div id="histChart" role="img" aria-label="월별 금융자산 추이"></div>
+      <p class="note" id="realNote"></p>
+    </div>
+  </section>
+
+  <!-- 자산 -->
+  <section id="tab-asset" hidden style="display:flex;flex-direction:column;gap:14px">
+    <div class="card">
+      <h2>투자자산 평가액</h2>
+      <div class="big num" id="asNow" style="font-size:34px;font-weight:600">–</div>
+      <div class="row" style="gap:8px">
+        <span class="chip good" id="asDay">–</span>
+        <span class="chip warn" id="asDD">–</span>
+      </div>
+      <p class="note" id="asWhen">가격 정보를 불러오는 중입니다.</p>
+      <div class="row">
+        <button class="btn ghost" type="button" id="asRefresh">지금 가격 갱신</button>
+        <button class="btn ghost" type="button" id="asReload">다시 불러오기</button>
+      </div>
+      <p class="toast" id="asMsg" role="status"></p>
+    </div>
+    <div class="card">
+      <h2>일별 추이 (억원)</h2>
+      <div class="seg" role="group" aria-label="기간">
+        <button type="button" data-rg="30" aria-pressed="false">1개월</button>
+        <button type="button" data-rg="91" aria-pressed="true">3개월</button>
+        <button type="button" data-rg="182" aria-pressed="false">6개월</button>
+        <button type="button" data-rg="365" aria-pressed="false">1년</button>
+        <button type="button" data-rg="0" aria-pressed="false">전체</button>
+      </div>
+      <div id="dayChart" role="img" aria-label="일별 투자자산 추이"></div>
+      <p class="note" id="dayNote"></p>
+    </div>
+    <div class="card">
+      <h2>계좌별 현황</h2>
+      <div id="acctList"></div>
+      <p class="note">평가액은 저장된 보유 수량 × 최신 자동 가격입니다. 전일 대비는 직전 일별 기록과 비교합니다. 예금·현금 계좌는 일별 추이에서 빠집니다.</p>
+    </div>
+  </section>
+
+  <!-- 입력 -->
+  <section id="tab-input" hidden style="display:flex;flex-direction:column;gap:14px">
+    <div class="card">
+      <h2>월말 잔고 입력 (만원)</h2>
+      <form id="recForm" novalidate>
+        <fieldset>
+          <legend>기준 월</legend>
+          <label class="full">월<input type="month" id="f-month" required></label>
+        </fieldset>
+        <fieldset id="balFields"><legend>계좌별 평가금액</legend></fieldset>
+        <fieldset>
+          <legend>이번 달 새로 넣은 돈 (계좌 간 이동 제외)</legend>
+          <label>연금저축+IRP<input type="number" inputmode="decimal" id="f-add-pension" step="any"></label>
+          <label>DC 입금<input type="number" inputmode="decimal" id="f-add-dc" step="any"></label>
+          <label class="full">기타 추가 적립 (ISA·일반·예금)<input type="number" inputmode="decimal" id="f-add-other" step="any"></label>
+          <label class="full">메모<input type="text" id="f-note" maxlength="120" placeholder="예: SKT 매도, 리밸런싱"></label>
+        </fieldset>
+        <p class="note" id="formTotal">합계 –</p>
+        <button class="btn ghost" type="button" id="fillFromAcct">현재 계좌 평가액으로 채우기</button>
+        <div class="row">
+          <button class="btn" type="submit" id="saveBtn">저장</button>
+        </div>
+        <p class="toast" id="formMsg" role="status"></p>
+      </form>
+    </div>
+    <div class="card">
+      <h2>기록 (행을 누르면 수정)</h2>
+      <div class="table-wrap"><table>
+        <thead><tr><th>월</th><th>금융자산</th><th>적립</th><th>손익</th><th>수익률</th></tr></thead>
+        <tbody id="histBody"><tr><td colspan="5" class="empty">아직 기록이 없습니다. 위 양식에 이번 달 잔고를 입력하세요.</td></tr></tbody>
+      </table></div>
+      <div class="row" id="delRow" hidden>
+        <span class="note" id="delLabel" style="flex:2"></span>
+        <button class="btn danger" type="button" id="delBtn">삭제</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- 리밸런싱 -->
+  <section id="tab-rebal" hidden style="display:flex;flex-direction:column;gap:14px">
+    <div class="card" id="stCard">
+      <h2>연금계좌 전환 전략</h2>
+      <div class="stages" id="stStages"></div>
+      <span class="chip good" id="stSignal">전략을 불러오는 중</span>
+      <div class="idx-grid" id="stIdx"></div>
+      <div class="row">
+        <button class="btn ghost" type="button" id="stSaveIdx">지수 저장</button>
+        <button class="btn" type="button" id="stApply" disabled>–</button>
+      </div>
+      <p class="toast" id="stMsg" role="status"></p>
+      <p class="note" id="stRule"></p>
+      <details class="more">
+        <summary>조건 바꾸기 · 단계 직접 지정</summary>
+        <div class="more-in">
+          <fieldset id="stTrig"></fieldset>
+          <button class="btn ghost" type="button" id="stSaveTrig">조건 저장</button>
+          <div class="row" id="stManual"></div>
+        </div>
+      </details>
+      <details class="more">
+        <summary>전환 기록</summary>
+        <ul class="log" id="stLog"></ul>
+      </details>
+    </div>
+
+    <div class="card">
+      <h2>입금 리밸런싱</h2>
+      <div class="seg wrap-seg" id="pfSeg" role="group" aria-label="계좌"></div>
+      <fieldset>
+        <label>현재 예수금 (원)<input type="number" inputmode="numeric" id="rb-cash" step="any"></label>
+        <label>이번 입금액 (원)<input type="number" inputmode="numeric" id="rb-dep" step="any" placeholder="0"></label>
+      </fieldset>
+      <div class="seg" role="group" aria-label="계산 방식">
+        <button type="button" id="md-buy" data-md="buy" aria-pressed="true">매수 전용</button>
+        <button type="button" id="md-full" data-md="full" aria-pressed="false">전체 리밸런싱</button>
+      </div>
+      <span class="chip good" id="rbSignal">–</span>
+      <div class="kv">
+        <div><span class="k">입금 후 총액</span><span class="v num" id="rbTot">–</span></div>
+        <div><span class="k">매수 합계</span><span class="v num" id="rbBuy">–</span></div>
+        <div><span class="k">매도 합계</span><span class="v num" id="rbSell">–</span></div>
+        <div><span class="k">매매 후 남는 현금</span><span class="v num" id="rbLeft">–</span></div>
+      </div>
+      <p class="note" id="rbWsum"></p>
+    </div>
+
+    <div class="card">
+      <h2>종목별 주문</h2>
+      <div id="rbItems" class="items"><p class="empty">계좌 정보를 불러오는 중입니다.</p></div>
+      <button class="btn ghost" type="button" id="rbAddItem">종목 추가</button>
+    </div>
+
+    <div class="card">
+      <h2>저장과 반영</h2>
+      <div class="row">
+        <button class="btn" type="button" id="rbSave">변경 저장</button>
+        <button class="btn ghost" type="button" id="rbApply">매매 완료 반영</button>
+      </div>
+      <p class="toast" id="rbMsg" role="status"></p>
+      <p class="note">'매매 완료 반영'은 위 주문대로 체결됐다고 보고 보유 수량과 예수금을 바꿔 저장합니다. 실제 체결 수량이 다르면 수량 칸을 고친 뒤 '변경 저장'을 누르세요. 현재가는 증권 앱에서 보고 직접 입력합니다.</p>
+      <fieldset>
+        <legend>계좌 설정</legend>
+        <label>계좌 이름<input type="text" id="rb-name" maxlength="20"></label>
+        <label>전체 리밸런싱 신호 (±%p)<input type="number" inputmode="decimal" id="rb-band" step="any"></label>
+      </fieldset>
+      <div class="row">
+        <input type="text" id="rb-newName" maxlength="20" placeholder="새 계좌 이름 (예: ISA)" style="flex:2">
+        <button class="btn ghost" type="button" id="rbAddPf">계좌 추가</button>
+      </div>
+      <button class="btn danger" type="button" id="rbDelPf">이 계좌 삭제</button>
+    </div>
+  </section>
+
+  <!-- 설정 -->
+  <section id="tab-set" hidden style="display:flex;flex-direction:column;gap:14px">
+    <div class="card">
+      <h2>계산 가정</h2>
+      <form id="setForm" novalidate>
+        <fieldset>
+          <legend>나와 목표</legend>
+          <label>출생 연도<input type="number" inputmode="numeric" id="s-birthYear"></label>
+          <label>출생 월<input type="number" inputmode="numeric" id="s-birthMonth" min="1" max="12"></label>
+          <label>목표 은퇴 나이<input type="number" inputmode="numeric" id="s-targetAge"></label>
+          <label>계산 종료 나이<input type="number" inputmode="numeric" id="s-endAge"></label>
+          <label>월 생활비 (만원, 오늘 가치)<input type="number" inputmode="decimal" id="s-spend" step="any"></label>
+          <label>국민연금 월액 (만원)<input type="number" inputmode="decimal" id="s-nps" step="any"></label>
+          <label>국민연금 개시 나이<input type="number" inputmode="numeric" id="s-npsAge"></label>
+        </fieldset>
+        <fieldset>
+          <legend>고정 저축</legend>
+          <label>연금저축+IRP 월 납입<input type="number" inputmode="decimal" id="s-pensionMonthly" step="any"></label>
+          <label>DC 연 입금<input type="number" inputmode="decimal" id="s-dcAnnual" step="any"></label>
+          <label class="full">저축 속도 계산 기간 (최근 개월)<input type="number" inputmode="numeric" id="s-paceMonths" min="1" max="36"></label>
+        </fieldset>
+        <fieldset>
+          <legend>수익률·물가 (연 %)</legend>
+          <label>물가상승률<input type="number" inputmode="decimal" id="s-infl" step="any"></label>
+          <label>보수 시나리오 차감 (%p)<input type="number" inputmode="decimal" id="s-consDelta" step="any"></label>
+          <label>은퇴 전 수익률<input type="number" inputmode="decimal" id="s-preR" step="any"></label>
+          <label>은퇴 후 수익률<input type="number" inputmode="decimal" id="s-postR" step="any"></label>
+        </fieldset>
+        <div class="row"><button class="btn" type="submit" id="setSave">가정 저장</button></div>
+        <p class="toast" id="setMsg" role="status"></p>
+      </form>
+      <div class="row"><button class="btn ghost" type="button" id="lockBtn">지금 잠그기</button><button class="btn danger" type="button" id="forgetBtn">이 기기 설정 지우기</button></div>
+      <p class="note" id="devInfo"></p>
+      <p class="note">고정 저축은 회사를 그만두거나 수입이 줄어도 유지할 수 있는 최소 납입액입니다. 기타 추가 적립은 입력한 기록의 최근 평균으로 자동 계산합니다. 세금과 건강보험료는 월 생활비 안에 포함된 것으로 봅니다.</p>
+    </div>
+  </section>
+</div>
+
+<nav class="tabs" aria-label="화면" id="nav" hidden>
+  <div class="in">
+    <button type="button" id="t-home" data-tab="home" aria-current="page">현황</button>
+    <button type="button" id="t-asset" data-tab="asset">자산</button>
+    <button type="button" id="t-input" data-tab="input">입력</button>
+    <button type="button" id="t-rebal" data-tab="rebal">리밸런싱</button>
+    <button type="button" id="t-set" data-tab="set">설정</button>
+  </div>
+</nav>
+
+<script>
+const ACC=[['pension','연금저축'],['irp','IRP'],['dc','DC'],['isa','ISA'],['stock','일반계좌'],['gold','금'],['cash','예금·현금']];
+// 실제 값은 암호화된 settings 에서 불러옵니다. 여기는 공개 코드이므로 일반적인 기본값만 둡니다.
+const DEF={birthYear:1985,birthMonth:1,targetAge:60,endAge:95,spend:300,nps:100,npsAge:65,infl:2.5,preR:5,postR:4,consDelta:1,pensionMonthly:0,dcAnnual:0,paceMonths:12};
+let S={...DEF}, RECS=[], SC='base', DB=null, editing=null;
+const $=id=>document.getElementById(id);
+const n=v=>{const x=Number(v);return Number.isFinite(x)?x:0};
+
+/* ---------- 포맷 ---------- */
+function won(m){ // 만원 단위
+  const s=m<0?'-':''; m=Math.abs(m);
+  if(m>=10000) return s+(m/10000).toFixed(m>=100000?1:2)+'억';
+  return s+Math.round(m).toLocaleString('ko-KR')+'만';
+}
+function ageTxt(months){const y=Math.floor(months/12),mo=Math.round(months-y*12);return mo?`${y}세 ${mo}개월`:`${y}세`}
+function pct(x,d=1){return (x*100).toFixed(d)+'%'}
+const ym=s=>{const [y,m]=s.split('-').map(Number);return y*12+(m-1)};
+
+/* ---------- 계산 ---------- */
+function total(r){return ACC.reduce((a,[k])=>a+n(r.bal?.[k]),0)}
+function addOf(r){return n(r.add?.pension)+n(r.add?.dc)+n(r.add?.other)}
+function derive(){
+  const recs=[...RECS].sort((a,b)=>a.month<b.month?-1:1);
+  if(!recs.length) return null;
+  const last=recs[recs.length-1];
+  const ageM=ym(last.month)+1-(S.birthYear*12+(S.birthMonth-1)); // 월말 기준
+  const A0=total(last);
+  // 실적 수익률 (시간가중)
+  let g=1, span=0, addSum=0, gainSum=0; const rows=[];
+  recs.forEach((r,i)=>{
+    const V1=total(r);
+    if(i===0){rows.push({r,V1,C:null,gain:null,ret:null});return}
+    const V0=total(recs[i-1]), C=addOf(r), gain=V1-V0-C, ret=gain/(V0+C/2||1);
+    const mGap=Math.max(1,ym(r.month)-ym(recs[i-1].month));
+    g*=1+ret; span+=mGap; addSum+=C; gainSum+=gain; rows.push({r,V1,C,gain,ret});
+  });
+  const twr= span>0? Math.pow(g,12/span)-1 : null;
+  // 저축 속도: 최근 N개월 기타 적립 평균 (첫 기록 제외)
+  const tail=recs.slice(1).slice(-S.paceMonths);
+  const otherAvg= tail.length? tail.reduce((a,r)=>a+n(r.add?.other),0)/tail.length : 0;
+  const fixedM=S.pensionMonthly+S.dcAnnual/12;
+  return {recs,last,ageM,A0,twr,span,addSum,gainSum,rows,otherAvg,fixedM};
+}
+function rates(d){
+  const pre=S.preR/100, post=S.postR/100, del=S.consDelta/100;
+  if(SC==='cons') return {pre:pre-del,post:post-del};
+  if(SC==='real' && d.twr!==null) return {pre:Math.min(.12,Math.max(-.05,d.twr)),post};
+  return {pre,post};
+}
+function sim(d,{save,retireM,pre,post,spend=S.spend,series=false}){
+  const infl=S.infl/100, mi=Math.pow(1+infl,1/12)-1, mp=Math.pow(1+pre,1/12)-1, mq=Math.pow(1+post,1/12)-1;
+  const endM=(S.endAge+1)*12, npsM=S.npsAge*12;
+  let a=d.A0, cpi=1, atR=retireM<=d.ageM?d.A0:null; const pts=series?[[d.ageM/12,a]]:null;
+  for(let m=d.ageM;m<endM;m++){
+    if(m<retireM){a=a*(1+mp)+save}
+    else{ if(atR===null) atR=a/cpi; a=a*(1+mq)-(spend-(m>=npsM?S.nps:0))*cpi;
+      if(a<0){ if(pts) pts.push([(m+1)/12,0]); return {ok:false,depM:m,atR,pts} } }
+    cpi*=1+mi;
+    if(pts && (m+1-d.ageM)%12===0) pts.push([(m+1)/12,a/cpi]);
+  }
+  return {ok:true,atR,end:a/cpi,pts};
+}
+function earliest(d,save,r){
+  for(let R=d.ageM;R<=75*12;R++){ if(sim(d,{save,retireM:R,...r}).ok) return R }
+  return null;
+}
+function bisect(lo,hi,okFn,wantMin){ // okFn 단조
+  for(let i=0;i<40;i++){const m=(lo+hi)/2; if(okFn(m)===wantMin) hi=m; else lo=m}
+  return wantMin?hi:lo;
+}
+function needAtRetire(retireM,post){
+  const infl=S.infl/100, rr=Math.pow((1+post)/(1+infl),1/12)-1; let pv=0,k=0;
+  for(let m=retireM;m<(S.endAge+1)*12;m++,k++) pv+=(S.spend-(m>=S.npsAge*12?S.nps:0))/Math.pow(1+rr,k+1);
+  return pv;
+}
+
+/* ---------- 차트 ---------- */
+function projSVG(d,lines,targetAge){
+  const W=640,H=260,L=40,R=12,T=14,B=30;
+  const x0=Math.floor(d.ageM/12), x1=S.endAge+1;
+  let ymax=0; lines.forEach(l=>l.pts.forEach(p=>ymax=Math.max(ymax,p[1])));
+  const step=ymax>40000?10000:ymax>20000?5000:2500; ymax=Math.ceil(ymax/step)*step||10000;
+  const X=a=>L+(a-x0)/(x1-x0)*(W-L-R), Y=v=>T+(1-v/ymax)*(H-T-B);
+  let s=`<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" font-family="IBM Plex Mono, monospace" font-size="11">`;
+  for(let v=0;v<=ymax;v+=step){s+=`<line x1="${L}" x2="${W-R}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--line)" stroke-width="1"/><text x="${L-6}" y="${Y(v)+4}" text-anchor="end" fill="var(--muted)">${v/10000}</text>`}
+  for(let a=Math.ceil(x0/5)*5;a<=x1;a+=5){s+=`<text x="${X(a)}" y="${H-10}" text-anchor="middle" fill="var(--muted)">${a}</text>`}
+  [[targetAge,'목표'],[S.npsAge,'국민연금']].forEach(([a,t])=>{ if(a>x0&&a<x1) s+=`<line x1="${X(a)}" x2="${X(a)}" y1="${T}" y2="${H-B}" stroke="var(--muted)" stroke-dasharray="3 4" stroke-width="1"/><text x="${X(a)+4}" y="${T+10}" fill="var(--muted)">${t}</text>`});
+  lines.forEach(l=>{
+    const p=l.pts.map(([a,v])=>`${X(a).toFixed(1)},${Y(Math.max(0,v)).toFixed(1)}`).join(' ');
+    s+=`<polyline points="${p}" fill="none" stroke="${l.color}" stroke-width="2.5" stroke-linejoin="round"/>`;
+    const e=l.pts[l.pts.length-1]; s+=`<circle cx="${X(e[0])}" cy="${Y(Math.max(0,e[1]))}" r="4" fill="${l.color}"/>`;
+    if(l.dep) s+=`<text x="${Math.min(X(e[0])+6,W-R-60)}" y="${Y(0)-8}" fill="${l.color}" font-weight="600">${Math.floor(e[0])}세 소진</text>`;
+  });
+  return s+'</svg>';
+}
+function histSVG(rows){
+  if(rows.length<2) return '';
+  const W=640,H=150,L=40,R=12,T=12,B=26, vals=rows.map(r=>r.V1);
+  let lo=Math.min(...vals), hi=Math.max(...vals); const pad=(hi-lo)*.15||1000; lo=Math.max(0,lo-pad); hi=hi+pad;
+  const X=i=>L+i/(rows.length-1)*(W-L-R), Y=v=>T+(1-(v-lo)/(hi-lo))*(H-T-B);
+  let s=`<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" font-family="IBM Plex Mono, monospace" font-size="11">`;
+  [lo,(lo+hi)/2,hi].forEach(v=>{s+=`<line x1="${L}" x2="${W-R}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--line)"/><text x="${L-6}" y="${Y(v)+4}" text-anchor="end" fill="var(--muted)">${(v/10000).toFixed(1)}</text>`});
+  const pts=rows.map((r,i)=>`${X(i).toFixed(1)},${Y(r.V1).toFixed(1)}`);
+  s+=`<polygon points="${X(0)},${H-B} ${pts.join(' ')} ${X(rows.length-1)},${H-B}" fill="var(--accent-soft)"/>`;
+  s+=`<polyline points="${pts.join(' ')}" fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linejoin="round"/>`;
+  const every=Math.ceil(rows.length/6);
+  rows.forEach((r,i)=>{ if(i%every===0||i===rows.length-1) s+=`<text x="${X(i)}" y="${H-8}" text-anchor="middle" fill="var(--muted)">${r.r.month.slice(2).replace('-','.')}</text>`});
+  const e=rows.length-1; s+=`<circle cx="${X(e)}" cy="${Y(rows[e].V1)}" r="4" fill="var(--accent)"/>`;
+  return s+'</svg>';
+}
+
+/* ---------- 렌더 ---------- */
+function render(){
+  const d=derive();
+  $('gapTitle').textContent=`${S.targetAge}세 은퇴를 위한 추가 적립`;
+  $('kNeedAsset').textContent=`${S.targetAge}세 필요 자산`; $('kProjAsset').textContent=`${S.targetAge}세 예상 자산`; $('kMaxSpend').textContent=`${S.targetAge}세 은퇴 시 가능 월 생활비`;
+  $('sc-real').disabled=!d||d.twr===null;
+  renderHistory(d);
+  if(!d){ $('asof').textContent='기록 없음'; $('heroAge').textContent='–'; $('heroChip').textContent='입력 탭에서 첫 기록을 추가하세요'; return }
+  $('asof').textContent=`${d.last.month.replace('-','년 ')}월 기준 · 만 ${ageTxt(d.ageM)}`;
+  const r=rates(d), curSave=d.fixedM+d.otherAvg, tM=S.targetAge*12;
+  const E=earliest(d,curSave,r), EF=earliest(d,d.fixedM,r);
+  $('heroAge').innerHTML=E===null?'75세 이후':ageTxt(E).replace(/(\d+)세/,'$1<small>세</small>').replace(/(\d+)개월/,'$1<small>개월</small>');
+  const chip=$('heroChip');
+  if(E===null){chip.className='chip bad';chip.textContent='현재 속도로는 75세 전 은퇴 어려움'}
+  else if(E<=tM){chip.className='chip good';chip.textContent=`목표 ${S.targetAge}세보다 ${ageTxt(tM-E).replace('세','년')} 빠름`; if(E===tM) chip.textContent=`목표 ${S.targetAge}세 달성 가능`}
+  else{const gap=E-tM; chip.className=gap>36?'chip bad':'chip warn'; chip.textContent=`목표 ${S.targetAge}세보다 ${ageTxt(gap).replace('세','년')} 늦음`}
+  $('kvPace').textContent=`월 ${won(curSave)}`;
+  $('kvFixed').textContent=EF===null?'75세 이후':ageTxt(EF);
+  $('kvRate').textContent=`${pct(r.pre)} / ${pct(r.post)}`;
+  // 목표 갭
+  const okAt=save=>sim(d,{save,retireM:tM,...r}).ok;
+  let need=null; if(d.ageM<tM){ need= okAt(0)?0: (okAt(20000)? bisect(0,20000,okAt,true): null) }
+  const needOther= need===null?null:Math.max(0,need-d.fixedM);
+  $('needSave').textContent= need===null?'계산 불가':`월 ${won(needOther)}`;
+  $('curSave').textContent=`월 ${won(d.otherAvg)}`;
+  $('saveBar').style.width= needOther? Math.min(100,d.otherAvg/needOther*100)+'%':'100%';
+  const gc=$('gapChip');
+  if(needOther===null){gc.className='chip bad';gc.textContent='목표 나이가 지났거나 저축만으로 도달 불가'}
+  else if(d.otherAvg>=needOther){gc.className='chip good';gc.textContent=`월 ${won(d.otherAvg-needOther)} 여유`}
+  else{gc.className='chip warn';gc.textContent=`월 ${won(needOther-d.otherAvg)} 더 필요`}
+  const cur=sim(d,{save:curSave,retireM:tM,...r,series:true});
+  $('needAsset').textContent=won(needAtRetire(tM,r.post));
+  $('projAsset').textContent=won(cur.atR??0);
+  const ms=bisect(0,3000,sp=>sim(d,{save:curSave,retireM:tM,...r,spend:sp}).ok,false);
+  $('maxSpend').textContent=`월 ${won(ms)}`;
+  const req= need!==null? sim(d,{save:need,retireM:tM,...r,series:true}) : null;
+  const lines=[{pts:cur.pts,color:'var(--warn)',dep:!cur.ok}]; if(req) lines.push({pts:req.pts,color:'var(--accent)',dep:!req.ok});
+  $('projChart').innerHTML=projSVG(d,lines,S.targetAge);
+  $('projNote').textContent= cur.ok? `현재 속도로 ${S.targetAge}세에 은퇴해도 ${S.endAge}세까지 자산이 남습니다.` : `현재 속도로 ${S.targetAge}세에 은퇴하면 ${ageTxt(cur.depM+1)}에 자산이 바닥납니다.`;
+  // 실적
+  $('rNow').textContent=won(d.A0); $('rAdd').textContent=won(d.addSum); $('rGain').textContent=won(d.gainSum);
+  $('rTwr').textContent= d.twr===null?'–':pct(d.twr);
+  $('histChart').innerHTML=histSVG(d.rows);
+  $('realNote').textContent= d.span<12? `기록 ${d.span}개월치 연환산이라 변동이 큽니다. '실적' 시나리오는 12개월 이상 쌓인 뒤 참고하세요. (은퇴 전 수익률은 -5~12% 범위로 제한)` : `기록 ${d.span}개월 기준 시간가중 수익률입니다.`;
+}
+function renderHistory(d){
+  const tb=$('histBody');
+  if(!d){tb.innerHTML='<tr><td colspan="5" class="empty">아직 기록이 없습니다. 위 양식에 이번 달 잔고를 입력하세요.</td></tr>';return}
+  tb.innerHTML=[...d.rows].reverse().map(x=>`<tr class="clickable" data-m="${x.r.month}" tabindex="0"><td>${x.r.month.replace('-','.')}${x.r.note?' ·':''}</td><td class="num">${won(x.V1)}</td><td class="num">${x.C===null?'–':won(x.C)}</td><td class="num ${x.gain>0?'pos':x.gain<0?'neg':''}">${x.gain===null?'–':won(x.gain)}</td><td class="num ${x.ret>0?'pos':x.ret<0?'neg':''}">${x.ret===null?'기준':pct(x.ret)}</td></tr>`).join('');
+}
+
+/* ---------- 입력 폼 ---------- */
+$('balFields').insertAdjacentHTML('beforeend',ACC.map(([k,t])=>`<label>${t}<input type="number" inputmode="decimal" step="any" id="f-bal-${k}"></label>`).join(''));
+function fillForm(rec,asNew){
+  const today=new Date(); const def=`${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}`;
+  $('f-month').value= asNew? def : rec?.month||def;
+  ACC.forEach(([k])=>$('f-bal-'+k).value= rec? (rec.bal?.[k]??'') : '');
+  $('f-add-pension').value= asNew? S.pensionMonthly : (rec?.add?.pension??'');
+  $('f-add-dc').value= asNew? 0 : (rec?.add?.dc??'');
+  $('f-add-other').value= asNew? 0 : (rec?.add?.other??'');
+  $('f-note').value= asNew? '' : (rec?.note||'');
+  editing= asNew? null : rec?.month||null;
+  $('delRow').hidden=!editing; $('delLabel').textContent= editing? `${editing.replace('-','년 ')}월 기록 수정 중`:'';
+  $('delBtn').textContent='삭제'; $('delBtn').dataset.armed='';
+  updTotal(); $('saveBtn').textContent= editing?'수정 저장':'저장';
+}
+function updTotal(){const t=ACC.reduce((a,[k])=>a+n($('f-bal-'+k).value),0);$('formTotal').textContent=`합계 ${won(t)}`}
+$('recForm').addEventListener('input',updTotal);
+$('f-month').addEventListener('change',()=>{const m=$('f-month').value; $('saveBtn').textContent= RECS.some(r=>r.month===m)?'덮어쓰기 저장':'저장'});
+function msg(el,t,err){el.textContent=t;el.className='toast'+(err?' err':'')}
+$('recForm').addEventListener('submit',async e=>{
+  e.preventDefault(); const m=$('f-month').value;
+  if(!/^\d{4}-\d{2}$/.test(m)) return msg($('formMsg'),'기준 월을 선택하세요.',true);
+  const rec={month:m,bal:{},add:{pension:n($('f-add-pension').value),dc:n($('f-add-dc').value),other:n($('f-add-other').value)},note:$('f-note').value.trim()};
+  ACC.forEach(([k])=>rec.bal[k]=n($('f-bal-'+k).value));
+  if(total(rec)<=0) return msg($('formMsg'),'계좌 잔고를 하나 이상 입력하세요.',true);
+  if(!DB) return msg($('formMsg'),'저장소에 연결되지 않아 저장할 수 없습니다. 페이지를 다시 열어 주세요.',true);
+  $('saveBtn').disabled=true;
+  try{ await DB.doc('records/'+m).set(rec); if(editing&&editing!==m) await DB.doc('records/'+editing).delete();
+    msg($('formMsg'),`${m.replace('-','년 ')}월 기록을 저장했습니다.`); fillForm(rec,false);
+  }catch(err){ msg($('formMsg'), err?.code==='invalid_argument'?'수정 비밀번호를 입력하지 않았거나 이 기기에 쓰기 토큰이 없어 저장하지 않았습니다.':'저장하지 못했습니다. 잠시 후 다시 시도하세요.',true) }
+  finally{$('saveBtn').disabled=false}
+});
+$('histBody').addEventListener('click',e=>{const tr=e.target.closest('tr[data-m]'); if(!tr) return; const rec=RECS.find(r=>r.month===tr.dataset.m); fillForm(rec,false); $('recForm').scrollIntoView({behavior:'smooth',block:'start'})});
+$('histBody').addEventListener('keydown',e=>{if(e.key==='Enter') e.target.click()});
+$('delBtn').addEventListener('click',async()=>{
+  const b=$('delBtn'); if(!editing) return;
+  if(!b.dataset.armed){b.dataset.armed='1';b.textContent='한 번 더 누르면 삭제';return}
+  try{await DB.doc('records/'+editing).delete(); msg($('formMsg'),`${editing.replace('-','년 ')}월 기록을 삭제했습니다.`); fillForm(null,true)}
+  catch{msg($('formMsg'),'삭제하지 못했습니다.',true)}
+});
+
+/* ---------- 설정 ---------- */
+const SKEYS=Object.keys(DEF);
+function fillSettings(){SKEYS.forEach(k=>{const el=$('s-'+k); if(el) el.value=S[k]})}
+$('setForm').addEventListener('submit',async e=>{
+  e.preventDefault(); const next={}; SKEYS.forEach(k=>next[k]=n($('s-'+k).value));
+  if(next.birthMonth<1||next.birthMonth>12||next.endAge<=next.targetAge||next.paceMonths<1) return msg($('setMsg'),'출생 월(1~12), 종료 나이(목표보다 큼), 계산 기간(1 이상)을 확인하세요.',true);
+  if(!DB){S=next;render();return msg($('setMsg'),'저장소 없이 이번 화면에만 적용했습니다.',true)}
+  try{await DB.doc('settings/main').set(next); msg($('setMsg'),'가정을 저장했습니다.')}catch{msg($('setMsg'),'저장하지 못했습니다.',true)}
+});
+
+/* ---------- 탭·시나리오 ---------- */
+document.querySelectorAll('nav.tabs button').forEach(b=>b.addEventListener('click',()=>{
+  document.querySelectorAll('nav.tabs button').forEach(x=>x.removeAttribute('aria-current')); b.setAttribute('aria-current','page');
+  ['home','asset','input','rebal','set'].forEach(t=>$('tab-'+t).hidden=t!==b.dataset.tab); window.scrollTo({top:0});
+  try{localStorage.setItem('tab',b.dataset.tab)}catch{}
+}));
+document.querySelectorAll('[data-sc]').forEach(b=>b.addEventListener('click',()=>{
+  if(b.disabled) return; SC=b.dataset.sc; document.querySelectorAll('[data-sc]').forEach(x=>x.setAttribute('aria-pressed',x===b)); render();
+  try{localStorage.setItem('sc',SC)}catch{}
+}));
+try{const t=localStorage.getItem('tab'); if(t&&t!=='home') $('t-'+t).click(); const sc=localStorage.getItem('sc'); if(sc&&sc!=='real'){SC=sc;document.querySelectorAll('[data-sc]').forEach(x=>x.setAttribute('aria-pressed',x.dataset.sc===sc))}}catch{}
+
+/* ---------- 리밸런싱 ---------- */
+let PF={}, cur=null, draft=null, dirty=false, MD='buy', switchArmed=null;
+const wonF=v=>Math.round(v).toLocaleString('ko-KR')+'원';
+const clone=o=>JSON.parse(JSON.stringify(o));
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function pfList(){return Object.entries(PF).sort((a,b)=>(a[1].order??99)-(b[1].order??99))}
+function rbPlan(p,dep,md){
+  const it=(p.items||[]).map(x=>({...x,price:autoP(x)??n(x.price)})), cash=n(p.cash)+n(dep); // 달러 예수금은 리밸런싱 현금에 넣지 않음
+  const val=it.map(x=>n(x.qty)*n(x.price)), inv=val.reduce((a,b)=>a+b,0);
+  const tot0=inv+n(p.cash), tot=inv+cash, tgt=it.map(x=>tot*n(x.w)/100);
+  let d;
+  if(md==='full'){ d=it.map((x,i)=>n(x.price)>0?Math.trunc((tgt[i]-val[i])/n(x.price)):0) } // 엑셀 M열과 같은 방식
+  else{
+    const def=it.map((x,i)=>Math.max(0,tgt[i]-val[i])), D=def.reduce((a,b)=>a+b,0);
+    const al= D>cash? def.map(x=>cash*x/D) : def;
+    d=it.map((x,i)=>n(x.price)>0?Math.floor(al[i]/n(x.price)):0);
+  }
+  let left=cash-d.reduce((a,q,i)=>a+q*n(it[i].price),0);
+  for(let g=0;g<5000;g++){ // 남은 현금: 가장 모자란 종목부터 1주씩
+    let bi=-1,bg=0; it.forEach((x,i)=>{const pr=n(x.price); if(pr>0&&pr<=left){const gap=tgt[i]-(val[i]+d[i]*pr); if(gap>bg){bg=gap;bi=i}}});
+    if(bi<0) break; d[bi]++; left-=n(it[bi].price);
+  }
+  const after=it.map((x,i)=>(n(x.qty)+d[i])*n(x.price));
+  let buy=0,sell=0; d.forEach((q,i)=>{const a=q*n(it[i].price); if(a>0) buy+=a; else sell-=a});
+  return {d,left,tot,tot0,val,after,buy,sell};
+}
+function rbSeg(){
+  $('pfSeg').innerHTML=pfList().map(([id,p])=>`<button type="button" data-pf="${esc(id)}" aria-pressed="${id===cur}">${esc(p.name||id)}</button>`).join('')||'<span class="note" style="padding:6px">계좌 없음</span>';
+}
+function rbRenderAll(){
+  rbSeg();
+  if(!draft){$('rbItems').innerHTML='<p class="empty">계좌가 없습니다. 아래 계좌 설정에서 계좌를 추가하세요.</p>';['rbTot','rbBuy','rbSell','rbLeft'].forEach(i=>$(i).textContent='–');return}
+  $('rb-cash').value=draft.cash??0; $('rb-name').value=draft.name||''; $('rb-band').value=draft.band??5;
+  const it=draft.items||[];
+  $('rbItems').innerHTML= it.length? it.map((x,i)=>`<div class="item" data-i="${i}">
+    <div class="item-h"><input type="text" data-f="name" id="it-${i}-name" value="${esc(x.name)}" aria-label="종목명"><button type="button" data-del="${i}" aria-label="종목 삭제">×</button></div>
+    <div class="item-meta">
+      <label>종목코드<input type="text" data-f="code" id="it-${i}-code" value="${esc(x.code||'')}" autocapitalize="characters"></label>
+      <label>가격 출처<select data-f="src" id="it-${i}-src">${[['kr','자동 · 국내'],['us','자동 · 미국'],['gold','자동 · 금 현물'],['manual','직접 입력']].map(([v,t])=>`<option value="${v}" ${(x.src||'manual')===v?'selected':''}>${t}</option>`).join('')}</select></label>
+    </div>
+    <div class="item-g">
+      <label>목표 %<input type="number" inputmode="decimal" step="any" data-f="w" id="it-${i}-w" value="${n(x.w)}"></label>
+      <label>보유 수량<input type="number" inputmode="numeric" step="any" data-f="qty" id="it-${i}-qty" value="${n(x.qty)}"></label>
+      <label>현재가 (원)<input type="number" inputmode="numeric" step="any" data-f="price" id="it-${i}-price" value="${n(autoP(x)??x.price)}" ${autoP(x)?'disabled':''}>${autoP(x)?`<span class="auto-tag">자동 · ${esc(PRICES?.date?.slice(5).replace('-','/')||'')}</span>`:''}</label>
+    </div>
+    ${Array.isArray(x.ws)?`<label class="item-ws">단계별 목표 % (${esc((ST?.stages||[]).map(s=>s.name.split(' ')[0]).join(' / ')||'중립 / 1차 / 2차')})<input type="text" inputmode="decimal" data-f="ws" id="it-${i}-ws" value="${x.ws.join(' / ')}"></label>`:''}
+    <div class="item-r" id="ir-${i}"></div></div>`).join('') : '<p class="empty">종목이 없습니다. 종목 추가를 누르세요.</p>';
+  rbCalc();
+}
+function rbCalc(){
+  if(!draft) return;
+  const r=rbPlan(draft,$('rb-dep').value,MD), it=draft.items||[], band=n(draft.band||5);
+  $('rbTot').textContent=wonF(r.tot); $('rbBuy').textContent=wonF(r.buy); $('rbSell').textContent=wonF(r.sell); $('rbLeft').textContent=wonF(r.left);
+  let maxDr=0, maxNm='';
+  it.forEach((x,i)=>{
+    const nowW=r.tot0? r.val[i]/r.tot0*100:0, aftW=r.tot? r.after[i]/r.tot*100:0, dr=Math.abs(nowW-n(x.w));
+    if(dr>maxDr){maxDr=dr;maxNm=x.name}
+    const el=$('ir-'+i); if(!el) return;
+    el.closest('.item').classList.toggle('drift',dr>band);
+    const q=r.d[i], amt=q*n(autoP(x)??x.price);
+    el.innerHTML=`<span class="num">현재 ${nowW.toFixed(1)}% → ${aftW.toFixed(1)}%</span>${q? `<b class="num ${q>0?'buy':'sell'}">${q>0?'매수':'매도'} ${Math.abs(q).toLocaleString('ko-KR')}주 · ${wonF(Math.abs(amt))}</b>`:'<b class="num">유지</b>'}`;
+  });
+  const sig=$('rbSignal');
+  if(maxDr>band){sig.className='chip warn';sig.textContent=`${maxNm} ${maxDr.toFixed(1)}%p 이탈 · 전체 리밸런싱 권장`}
+  else{sig.className='chip good';sig.textContent=`모든 종목 ±${band}%p 이내 · 매수 전용으로 충분`}
+  const ws=it.reduce((a,x)=>a+n(x.w),0);
+  $('rbWsum').textContent= ws>100.001? `목표 비중 합계가 ${ws.toFixed(1)}%입니다. 100% 이하로 맞추세요.` : `목표 비중 합계 ${ws.toFixed(1)}%${ws<99.999?` · 나머지 ${(100-ws).toFixed(1)}%는 예수금으로 둡니다`:''}. 주황 테두리는 목표에서 ±${band}%p 넘게 벗어난 종목입니다.`;
+  $('rbWsum').style.color= ws>100.001?'var(--bad)':'';
+}
+function rbDirty(){dirty=true; msg($('rbMsg'),'저장하지 않은 변경이 있습니다.')}
+$('rbItems').addEventListener('input',e=>{
+  const f=e.target.dataset.f, i=+e.target.closest('.item')?.dataset.i; if(!f||!draft) return;
+  if(f==='src'||f==='code') return;
+  draft.items[i][f]= f==='name'? e.target.value : f==='ws'? e.target.value.split('/').map(s=>n(s.trim())) : n(e.target.value); rbDirty(); rbCalc();
+});
+$('rbItems').addEventListener('change',e=>{
+  const f=e.target.dataset.f, i=+e.target.closest('.item')?.dataset.i; if((f!=='src'&&f!=='code')||!draft) return;
+  draft.items[i][f]= f==='code'? e.target.value.trim().toUpperCase() : e.target.value; rbDirty(); rbRenderAll();
+});
+$('rbItems').addEventListener('click',e=>{
+  const b=e.target.closest('[data-del]'); if(!b) return;
+  if(b.dataset.armed!=='1'){b.dataset.armed='1';b.textContent='삭제?';return}
+  draft.items.splice(+b.dataset.del,1); rbDirty(); rbRenderAll();
+});
+$('rb-cash').addEventListener('input',e=>{if(draft){draft.cash=n(e.target.value);rbDirty();rbCalc()}});
+$('rb-dep').addEventListener('input',rbCalc);
+$('rb-name').addEventListener('input',e=>{if(draft){draft.name=e.target.value;rbDirty()}});
+$('rb-band').addEventListener('input',e=>{if(draft){draft.band=n(e.target.value)||5;rbDirty();rbCalc()}});
+document.querySelectorAll('[data-md]').forEach(b=>b.addEventListener('click',()=>{MD=b.dataset.md;document.querySelectorAll('[data-md]').forEach(x=>x.setAttribute('aria-pressed',x===b));rbCalc()}));
+$('pfSeg').addEventListener('click',e=>{
+  const b=e.target.closest('[data-pf]'); if(!b||b.dataset.pf===cur) return;
+  if(dirty&&switchArmed!==b.dataset.pf){switchArmed=b.dataset.pf;msg($('rbMsg'),'저장하지 않은 변경이 있습니다. 한 번 더 누르면 변경을 버리고 이동합니다.',true);return}
+  switchArmed=null; cur=b.dataset.pf; draft=clone(PF[cur]); dirty=false; $('rb-dep').value=''; msg($('rbMsg'),''); rbRenderAll();
+});
+$('rbAddItem').addEventListener('click',()=>{if(!draft) return; (draft.items=draft.items||[]).push({name:'새 종목',w:0,qty:0,price:0}); rbDirty(); rbRenderAll();});
+async function rbWrite(doc,okText){
+  if(!DB) return msg($('rbMsg'),'저장소에 연결되지 않아 저장할 수 없습니다.',true);
+  try{ await DB.doc('portfolios/'+cur).set(doc); dirty=false; msg($('rbMsg'),okText) }
+  catch(err){ msg($('rbMsg'), err?.code==='invalid_argument'?'수정 비밀번호를 입력하지 않았거나 이 기기에 쓰기 토큰이 없어 저장하지 않았습니다.':'저장하지 못했습니다. 잠시 후 다시 시도하세요.',true) }
+}
+$('rbSave').addEventListener('click',()=>{ if(draft) rbWrite({...draft,updatedAt:new Date().toISOString()},'변경을 저장했습니다.') });
+$('rbApply').addEventListener('click',async()=>{
+  const b=$('rbApply'); if(!draft) return;
+  if(b.dataset.armed!=='1'){b.dataset.armed='1';b.textContent='한 번 더 누르면 반영';setTimeout(()=>{b.dataset.armed='';b.textContent='매매 완료 반영'},5000);return}
+  b.dataset.armed='';b.textContent='매매 완료 반영';
+  const r=rbPlan(draft,$('rb-dep').value,MD), next=clone(draft);
+  next.items.forEach((x,i)=>x.qty=n(x.qty)+r.d[i]); next.cash=Math.round(r.left); next.updatedAt=new Date().toISOString();
+  draft=next; $('rb-dep').value=''; await rbWrite(next,'매매 결과를 보유 수량과 예수금에 반영했습니다.'); rbRenderAll();
+});
+$('rbAddPf').addEventListener('click',async()=>{
+  const nm=$('rb-newName').value.trim(); if(!nm) return msg($('rbMsg'),'새 계좌 이름을 입력하세요.',true);
+  if(!DB) return msg($('rbMsg'),'저장소에 연결되지 않았습니다.',true);
+  const id='pf-'+Date.now().toString(36);
+  try{await DB.doc('portfolios/'+id).set({name:nm,order:pfList().length,cash:0,band:5,items:[]}); cur=id; draft=null; dirty=false; $('rb-newName').value=''; msg($('rbMsg'),`${nm} 계좌를 추가했습니다.`)}
+  catch{msg($('rbMsg'),'계좌를 추가하지 못했습니다.',true)}
+});
+$('rbDelPf').addEventListener('click',async()=>{
+  const b=$('rbDelPf'); if(!cur) return;
+  if(b.dataset.armed!=='1'){b.dataset.armed='1';b.textContent=`한 번 더 누르면 '${draft?.name||cur}' 삭제`;setTimeout(()=>{b.dataset.armed='';b.textContent='이 계좌 삭제'},5000);return}
+  b.dataset.armed='';b.textContent='이 계좌 삭제';
+  try{await DB.doc('portfolios/'+cur).delete(); cur=null; draft=null; dirty=false; msg($('rbMsg'),'계좌를 삭제했습니다.')}catch{msg($('rbMsg'),'삭제하지 못했습니다.',true)}
+});
+
+/* ---------- 전환 전략 ---------- */
+let ST=null, stIdx=[];
+const todayStr=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`};
+const mdTxt=s=>{const [,m,d]=s.split('-').map(Number);return `${m}월 ${d}일`};
+function stEval(){
+  const dds=stIdx.map(x=>(n(x.peak)>0&&n(x.cur)>0)?(n(x.cur)/n(x.peak)-1)*100:null);
+  const valid=dds.filter(v=>v!==null), worst=valid.length?Math.min(...valid):null;
+  const act=ST.active??-1; let target=act;
+  if(act<0) target=0;
+  else if(worst!==null) ST.stages.forEach((s,i)=>{ if(i>act&&i>0&&worst<=n(s.trigger)) target=i });
+  const sch=ST.scheduled, due= act<0 && (!sch || todayStr()>=sch.date);
+  return {dds,worst,act,target,due,sch};
+}
+function stRenderAll(){
+  if(!ST){$('stSignal').className='chip warn';$('stSignal').textContent= DB?'전략 정보가 없습니다':'저장소에 연결되지 않았습니다';$('stHome').hidden=true;return}
+  $('stIdx').innerHTML=stIdx.map((x,i)=>`<div class="idx"><span class="nm">${esc(x.name)}${x.updated?` <span class="note" style="font-weight:400">· ${esc(x.updated)} 입력</span>`:''}</span>
+    <label>전고점<input type="number" inputmode="decimal" step="any" id="ix-${i}-peak" data-ix="${i}" data-k="peak" value="${x.peak??''}" placeholder="최고 종가"></label>
+    <label>현재<input type="number" inputmode="decimal" step="any" id="ix-${i}-cur" data-ix="${i}" data-k="cur" value="${x.cur??''}" placeholder="오늘 지수"></label>
+    <span class="dd" id="ixdd-${i}">–</span></div>`).join('');
+  $('stTrig').innerHTML='<legend>전환 조건 (고점 대비 %)</legend>'+ST.stages.map((s,i)=>i===0?'':`<label>${esc(s.name)}<input type="number" inputmode="decimal" step="any" id="tg-${i}" value="${n(s.trigger)}"></label>`).join('');
+  $('stManual').innerHTML=ST.stages.map((s,i)=>`<button class="btn ghost" type="button" data-man="${i}">${esc(s.name.split(' ')[0])}로 지정</button>`).join('');
+  $('stLog').innerHTML=(ST.log||[]).slice().reverse().map(l=>`<li><span class="d">${esc(l.date)}</span><span>${esc(l.name)}${l.note?` · ${esc(l.note)}`:''}</span></li>`).join('')||'<li class="note">아직 전환 기록이 없습니다.</li>';
+  stCalc();
+}
+function stCalc(){
+  if(!ST) return; const e=stEval(), S2=ST.stages;
+  e.dds.forEach((v,i)=>{const el=$('ixdd-'+i); if(!el) return; el.textContent=v===null?'–':(v>0?'+':'')+v.toFixed(1)+'%';
+    el.className='dd'+(v!==null&&S2[2]&&v<=n(S2[2].trigger)?' bad':v!==null&&S2[1]&&v<=n(S2[1].trigger)?' warn':'')});
+  $('stStages').innerHTML=S2.map((s,i)=>`<div class="stage ${i===e.act?'on':''} ${i===e.target&&i!==e.act?'next':''}"><span class="t">${esc(s.name)}</span><span class="c">${i===0?'기본 단계':`고점 대비 ${n(s.trigger)}%`}</span></div>`).join('');
+  const sig=$('stSignal'), btn=$('stApply'), home=$('stHome'); let homeTxt='';
+  if(e.act<0){
+    const dday=e.sch? Math.round((new Date(e.sch.date+'T00:00:00')-new Date(todayStr()+'T00:00:00'))/864e5):0;
+    sig.className= e.due?'chip warn':'chip good';
+    sig.textContent= e.due? `${S2[0].name} 전환일입니다${e.sch?` (${mdTxt(e.sch.date)})`:''}` : `${mdTxt(e.sch.date)} ${S2[0].name} 전환 예정 · D-${dday}`;
+    btn.disabled=false; btn.textContent= e.due? `${S2[0].name} 전환 적용` : `${S2[0].name} 미리 적용`;
+    if(e.due) homeTxt=`오늘은 연금계좌 ${S2[0].name} 전환일입니다. 리밸런싱 탭에서 적용하세요.`;
+  } else if(e.target>e.act){
+    const who=stIdx.map((x,i)=>e.dds[i]!==null&&e.dds[i]<=n(S2[e.target].trigger)?`${x.name} ${e.dds[i].toFixed(1)}%`:null).filter(Boolean).join(', ');
+    sig.className='chip bad'; sig.textContent=`${who} · ${S2[e.target].name} 조건 충족`;
+    btn.disabled=false; btn.textContent=`${S2[e.target].name} 적용`;
+    homeTxt=`${who}: 연금계좌 ${S2[e.target].name} 조건을 충족했습니다. 리밸런싱 탭에서 확인하세요.`;
+  } else {
+    sig.className='chip good';
+    sig.textContent= e.worst===null? `현재 ${S2[e.act].name} · 지수를 입력하면 전환 조건을 확인합니다` : `현재 ${S2[e.act].name} 유지 · 최대 낙폭 ${e.worst.toFixed(1)}%`;
+    btn.disabled=true; btn.textContent= e.act>=S2.length-1? '마지막 단계입니다':'전환 조건 미충족';
+  }
+  btn.dataset.armed='';
+  home.hidden=!homeTxt; home.textContent=homeTxt;
+  const tr=S2.slice(1).map(s=>`${n(s.trigger)}% 이하면 ${s.name}`).join(', ');
+  $('stRule').textContent=`두 지수 중 하나라도 전고점 대비 ${tr}입니다. 단계는 올라가기만 하고, 50세(${S.birthYear+50}년) 전에는 되돌리지 않습니다. 적용하면 연금저축·IRP의 목표 %가 그 단계 값으로 바뀝니다. 현재값이 전고점보다 높으면 저장할 때 전고점이 자동으로 바뀝니다.`;
+}
+$('stIdx').addEventListener('input',e=>{const t=e.target; if(t.dataset.ix===undefined) return; stIdx[+t.dataset.ix][t.dataset.k]= t.value===''?null:n(t.value); stCalc()});
+async function stWrite(next,ok){
+  if(!DB) return msg($('stMsg'),'저장소에 연결되지 않았습니다.',true);
+  try{await DB.doc('strategy/main').set(next); if(ok) msg($('stMsg'),ok); return true}catch{msg($('stMsg'),'저장하지 못했습니다. 잠시 후 다시 시도하세요.',true); return false}
+}
+$('stSaveIdx').addEventListener('click',()=>{
+  if(!ST) return; const t=todayStr();
+  const idx=stIdx.map(x=>{const o={...x}; if(n(o.cur)>n(o.peak)) o.peak=o.cur; if(o.cur!=null) o.updated=t; return o});
+  stWrite({...ST,indices:idx},'지수를 저장했습니다.');
+});
+$('stSaveTrig').addEventListener('click',()=>{
+  if(!ST) return; const st=ST.stages.map((s,i)=>i===0?s:{...s,trigger:-Math.abs(n($('tg-'+i).value))});
+  for(let i=2;i<st.length;i++) if(st[i].trigger>=st[i-1].trigger) return msg($('stMsg'),'뒤 단계일수록 더 큰 하락(더 작은 값)이어야 합니다.',true);
+  stWrite({...ST,stages:st},'전환 조건을 저장했습니다.');
+});
+async function stApplyStage(stage,note){
+  if(dirty) return msg($('stMsg'),'리밸런싱 계좌에 저장하지 않은 변경이 있습니다. 먼저 저장하세요.',true);
+  if(!DB) return msg($('stMsg'),'저장소에 연결되지 않았습니다.',true);
+  try{
+    for(const id of ST.targets||[]){ if(!PF[id]) continue; const doc=clone(PF[id]);
+      doc.items.forEach(x=>{ if(Array.isArray(x.ws)&&x.ws[stage]!=null) x.w=n(x.ws[stage]) }); doc.updatedAt=new Date().toISOString();
+      await DB.doc('portfolios/'+id).set(doc) }
+  }catch{return msg($('stMsg'),'목표비중을 바꾸지 못했습니다. 다시 시도하세요.',true)}
+  const name=ST.stages[stage].name, log=[...(ST.log||[]),{date:todayStr(),stage,name,note}];
+  if(await stWrite({...ST,active:stage,scheduled:null,log})){
+    const names=(ST.targets||[]).map(id=>PF[id]?.name||id).join('·');
+    msg($('stMsg'),`${name} 목표비중을 ${names}에 적용했습니다. 아래 계산 방식이 '전체 리밸런싱'으로 바뀌었으니 매매 수량을 확인하세요.`);
+    MD='full'; document.querySelectorAll('[data-md]').forEach(x=>x.setAttribute('aria-pressed',x.dataset.md==='full')); rbCalc();
+  }
+}
+$('stApply').addEventListener('click',()=>{
+  const b=$('stApply'); if(!ST||b.disabled) return; const e=stEval();
+  if(b.dataset.armed!=='1'){b.dataset.armed='1';b.textContent='한 번 더 누르면 적용';return}
+  const note= e.act<0? (e.sch?`${mdTxt(e.sch.date)} 예정 전환`:'예정 전환') : stIdx.map((x,i)=>e.dds[i]===null?null:`${x.name} ${e.dds[i].toFixed(1)}%`).filter(Boolean).join(', ');
+  stApplyStage(e.target,note);
+});
+$('stManual').addEventListener('click',e=>{
+  const b=e.target.closest('[data-man]'); if(!b) return;
+  if(b.dataset.armed!=='1'){b.dataset.armed='1';b.textContent='한 번 더 누르면 지정';return}
+  stApplyStage(+b.dataset.man,'직접 지정');
+});
+
+fillSettings(); fillForm(null,true); render(); rbRenderAll();
+
+/* ================= GitHub 저장소 + 암호화 저장소 ================= */
+const ITER=310000, CFG_KEY='at.cfg.v1';
+const te=new TextEncoder(), td=new TextDecoder();
+const u8b64=u=>{let s='';for(let i=0;i<u.length;i+=0x8000)s+=String.fromCharCode.apply(null,u.subarray(i,i+0x8000));return btoa(s)};
+const b64u8=b=>Uint8Array.from(atob(b.replace(/\s/g,'')),c=>c.charCodeAt(0));
+const keyCache=new Map(); let SESSION_SALT=null;
+async function deriveKey(pw,salt,iter){
+  const k=pw+'|'+u8b64(salt)+'|'+iter; if(keyCache.has(k)) return keyCache.get(k);
+  const base=await crypto.subtle.importKey('raw',te.encode(pw),'PBKDF2',false,['deriveKey']);
+  const key=await crypto.subtle.deriveKey({name:'PBKDF2',salt,iterations:iter,hash:'SHA-256'},base,{name:'AES-GCM',length:256},false,['encrypt','decrypt']);
+  keyCache.set(k,key); return key;
+}
+async function sealWeb(obj,pw,fresh){
+  const salt= fresh? crypto.getRandomValues(new Uint8Array(16)) : (SESSION_SALT ||= crypto.getRandomValues(new Uint8Array(16)));
+  const iv=crypto.getRandomValues(new Uint8Array(12)), key=await deriveKey(pw,salt,ITER);
+  const ct=new Uint8Array(await crypto.subtle.encrypt({name:'AES-GCM',iv},key,te.encode(JSON.stringify(obj))));
+  return {v:1,kdf:'PBKDF2-SHA256',iter:ITER,salt:u8b64(salt),iv:u8b64(iv),ct:u8b64(ct)};
+}
+async function openWeb(env,pw){
+  const key=await deriveKey(pw,b64u8(env.salt),env.iter);
+  const pt=await crypto.subtle.decrypt({name:'AES-GCM',iv:b64u8(env.iv)},key,b64u8(env.ct));
+  return JSON.parse(td.decode(pt));
+}
+const GH={repo:'',branch:'main',readTok:null,writeTok:null,viewPw:null,cfg:null};
+async function gh(path,opt={}){
+  const r=await fetch(`https://api.github.com/repos/${GH.repo}/${path}`,{method:opt.method||'GET',body:opt.body,cache:'no-store',
+    headers:{Accept:'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28',Authorization:`Bearer ${opt.tok||GH.readTok}`}});
+  if(!r.ok){const e=new Error('GitHub '+r.status); e.status=r.status; try{e.body=await r.json()}catch{} throw e}
+  return r.status===204?null:r.json();
+}
+async function getFile(p){
+  try{const j=await gh(`contents/${p}?ref=${encodeURIComponent(GH.branch)}`); return {sha:j.sha,env:JSON.parse(td.decode(b64u8(j.content)))}}
+  catch(e){ if(e.status===404) return null; throw e }
+}
+async function putFile(p,env,sha,msgText){
+  const j=await gh(`contents/${p}`,{method:'PUT',tok:GH.writeTok,body:JSON.stringify({message:msgText,content:u8b64(te.encode(JSON.stringify(env)+'\n')),sha:sha||undefined,branch:GH.branch})});
+  return j.content.sha;
+}
+function ghErrText(e){
+  if(e?.status===401) return '토큰이 만료되었거나 올바르지 않습니다. 설정 탭에서 이 기기 설정을 지우고 다시 입력하세요.';
+  if(e?.status===403) return '토큰에 이 작업 권한이 없습니다. 토큰 권한(Contents, Actions)을 확인하세요.';
+  if(e?.status===404) return '저장소를 찾을 수 없습니다. 저장소 이름과 토큰의 저장소 선택을 확인하세요.';
+  return '네트워크 오류로 처리하지 못했습니다. 잠시 후 다시 시도하세요.';
+}
+
+/* 수정 권한: 수정 비밀번호로 쓰기 토큰을 풀어야 저장할 수 있음 */
+let writeWaiters=null;
+function ensureWrite(){
+  if(GH.writeTok) return Promise.resolve();
+  if(!GH.cfg?.writeTok) return Promise.reject(Object.assign(new Error('no write'),{code:'no_write'}));
+  if(!writeWaiters){ writeWaiters=[]; $('wdlg').hidden=false; $('w-pw').value=''; $('w-msg').textContent=''; setTimeout(()=>$('w-pw').focus(),50) }
+  return new Promise((res,rej)=>writeWaiters.push({res,rej}));
+}
+function closeWrite(ok,err){ $('wdlg').hidden=true; const w=writeWaiters||[]; writeWaiters=null; w.forEach(x=>ok?x.res():x.rej(err)) }
+$('wForm').addEventListener('submit',async e=>{
+  e.preventDefault();
+  try{ GH.writeTok=await openWeb(GH.cfg.writeTok,$('w-pw').value); closeWrite(true) }
+  catch{ msg($('w-msg'),'수정 비밀번호가 맞지 않습니다.',true) }
+});
+$('w-cancel').addEventListener('click',()=>closeWrite(false,Object.assign(new Error('cancel'),{code:'cancelled'})));
+
+/* 기존 화면 코드가 쓰는 DB 인터페이스를 암호화 파일 하나로 구현 */
+let STATE=null, STATE_SHA=null, DAILY=null, PRICES=null, PRICES_SHA=null;
+const listeners=[];
+const strip=o=>JSON.parse(JSON.stringify(o,(k,v)=>k.startsWith('_')?undefined:v));
+function snapDoc(c,id){const d=STATE?.[c]?.[id]; return {id,exists:!!d,data:()=>d?clone(d):undefined,metadata:{}}}
+function snapCol(c){const docs=Object.entries(STATE?.[c]||{}).map(([id,d])=>({id,exists:true,data:()=>clone(d)})); return {docs,size:docs.length,empty:!docs.length,metadata:{}}}
+function emit(c){listeners.forEach(l=>{ if(c==='*'||l.c===c) l.cb(l.id?snapDoc(l.c,l.id):snapCol(l.c)) })}
+let wq=Promise.resolve();
+function mutate(c,fn){
+  const job=wq.then(async()=>{
+    await ensureWrite();
+    let next=clone(STATE); fn(next);
+    try{ STATE_SHA=await putFile('data/state.enc.json',await sealWeb(next,GH.viewPw),STATE_SHA,'화면에서 수정') }
+    catch(e){
+      if(e.status!==409&&e.status!==422) throw e;
+      // 다른 기기에서 바뀐 내용 위에 이번 변경을 다시 적용
+      const f=await getFile('data/state.enc.json'); next=await openWeb(f.env,GH.viewPw); fn(next);
+      STATE_SHA=await putFile('data/state.enc.json',await sealWeb(next,GH.viewPw),f.sha,'화면에서 수정');
+      STATE=next; emit('*'); return;
+    }
+    STATE=next; emit(c);
+  });
+  wq=job.catch(()=>{});
+  return job.catch(e=>{ if(e.code==='cancelled'||e.code==='no_write'){const x=new Error('write'); x.code='invalid_argument'; x.why=e.code; throw x} throw e });
+}
+const STORE={
+  doc(path){const [c,id]=path.split('/'); return {
+    set:data=>mutate(c,st=>{(st[c] ||= {})[id]=strip(data)}),
+    delete:()=>mutate(c,st=>{ if(st[c]) delete st[c][id] }),
+    get:async()=>snapDoc(c,id),
+    onSnapshot(cb){const l={c,id,cb}; listeners.push(l); setTimeout(()=>cb(snapDoc(c,id))); return ()=>{const i=listeners.indexOf(l); if(i>=0) listeners.splice(i,1)}}
+  }},
+  collection(c){return {onSnapshot(cb){const l={c,cb}; listeners.push(l); setTimeout(()=>cb(snapCol(c))); return ()=>{const i=listeners.indexOf(l); if(i>=0) listeners.splice(i,1)}}}}
+};
+
+/* 자동 가격 */
+function autoP(x){ return (x&&x.src&&x.src!=='manual'&&PRICES?.prices?.[x.code]>0)? PRICES.prices[x.code] : null }
+function acctValue(p){ return (p.items||[]).reduce((a,x)=>a+n(x.qty)*n(autoP(x)??x.price),0)+n(p.cash)+n(p.cashUsd)*n(PRICES?.fx) }
+
+/* 자산 탭 */
+let RANGE=91;
+function dayChartSVG(rows){
+  if(rows.length<2) return '<p class="empty">일별 기록이 2개 이상 쌓이면 추이가 그려집니다.</p>';
+  const W=640,H=220,L=44,R=12,T=14,B=26, vals=rows.map(r=>r.total);
+  let lo=Math.min(...vals), hi=Math.max(...vals); const pad=(hi-lo)*.12||1e6; lo-=pad; hi+=pad;
+  const t0=new Date(rows[0].date).getTime(), t1=new Date(rows.at(-1).date).getTime();
+  const X=d=>L+(new Date(d).getTime()-t0)/((t1-t0)||1)*(W-L-R), Y=v=>T+(1-(v-lo)/(hi-lo))*(H-T-B);
+  let s=`<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" font-family="IBM Plex Mono, monospace" font-size="11">`;
+  for(let k=0;k<=3;k++){const v=lo+(hi-lo)*k/3; s+=`<line x1="${L}" x2="${W-R}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--line)"/><text x="${L-6}" y="${Y(v)+4}" text-anchor="end" fill="var(--muted)">${(v/1e8).toFixed(2)}</text>`}
+  const pts=rows.map(r=>`${X(r.date).toFixed(1)},${Y(r.total).toFixed(1)}`);
+  s+=`<polygon points="${L},${H-B} ${pts.join(' ')} ${X(rows.at(-1).date).toFixed(1)},${H-B}" fill="var(--accent-soft)"/>`;
+  s+=`<polyline points="${pts.join(' ')}" fill="none" stroke="var(--accent)" stroke-width="2.2" stroke-linejoin="round"/>`;
+  const step=Math.max(1,Math.ceil(rows.length/5));
+  let lastX=-1e9; const endX=X(rows.at(-1).date);
+  rows.forEach((r,i)=>{ const xx=X(r.date), isEnd=i===rows.length-1; if((i%step===0&&endX-xx>70&&xx-lastX>60)||isEnd){ lastX=xx; s+=`<text x="${Math.min(W-R-18,Math.max(L+18,xx))}" y="${H-8}" text-anchor="middle" fill="var(--muted)">${r.date.slice(2).replace(/-/g,'.')}</text>`}});
+  const pk=rows.reduce((a,r)=>r.total>a.total?r:a,rows[0]);
+  s+=`<circle cx="${X(pk.date)}" cy="${Y(pk.total)}" r="3.5" fill="var(--warn)"/>`;
+  s+=`<circle cx="${X(rows.at(-1).date)}" cy="${Y(rows.at(-1).total)}" r="4" fill="var(--accent)"/>`;
+  return s+'</svg>';
+}
+function renderAsset(){
+  if(!STATE) return;
+  const ports=Object.entries(STATE.portfolios||{}).sort((a,b)=>(a[1].order??99)-(b[1].order??99));
+  const recs=(DAILY?.records||[]), last=recs.at(-1);
+  const live={}; ports.forEach(([id,p])=>live[id]=acctValue(p));
+  const tracked=ports.filter(([,p])=>p.track!==false), now=tracked.reduce((a,[id])=>a+live[id],0);
+  $('asNow').textContent=won(now/1e4);
+  const prevRec= last && PRICES && last.date===PRICES.date ? recs.at(-2) : last;
+  if(prevRec){const d=now-prevRec.total, c=$('asDay'); c.className='chip '+(d>=0?'good':'bad'); c.textContent=`${prevRec.date.slice(5).replace('-','/')} 대비 ${d>=0?'+':''}${won(d/1e4)} (${(d/prevRec.total*100).toFixed(2)}%)`}
+  else {$('asDay').className='chip warn'; $('asDay').textContent='비교할 기록 없음'}
+  const peak=Math.max(now,...recs.map(r=>r.total)), dd=(now/peak-1)*100;
+  $('asDD').className='chip '+(dd>-5?'good':dd>-15?'warn':'bad'); $('asDD').textContent= dd>-0.05?'기록상 최고치':`기록상 고점 대비 ${dd.toFixed(1)}%`;
+  $('asWhen').textContent= PRICES? `가격 기준 ${PRICES.date} (${new Date(PRICES.at).toLocaleString('ko-KR',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})} 조회)${PRICES.missing?.length?` · 조회 실패 ${PRICES.missing.join(', ')} (직전 가격 사용)`:''}` : '아직 자동 가격이 없습니다. 첫 자동 실행 전까지는 저장된 가격으로 계산합니다.';
+  const from= RANGE? new Date(Date.now()-RANGE*864e5).toISOString().slice(0,10) : '';
+  $('dayChart').innerHTML=dayChartSVG(recs.filter(r=>r.date>=from));
+  $('dayNote').textContent=`기록 ${recs.length}일 (${recs[0]?.date||'–'} ~ ${last?.date||'–'}). 엑셀에서 가져온 기록은 주 단위이고, 이후는 평일 장 마감 후 자동으로 쌓입니다. 주황 점은 기간 중 최고치입니다.`;
+  $('acctList').innerHTML=ports.map(([id,p])=>{
+    const v=live[id], pv=prevRec?.accounts?.[id], d= pv!=null? v-pv : null;
+    return `<div class="acct"><span class="nm">${esc(p.name||id)}${p.track===false?' <span class="note">· 추이 제외</span>':''}</span><span class="vv"><span class="num">${won(v/1e4)}</span>${d!=null?`<span class="dv num ${d>=0?'pos':'neg'}">${d>=0?'+':''}${won(d/1e4)}</span>`:''}${now&&p.track!==false?`<span class="dv note">${(v/now*100).toFixed(1)}%</span>`:''}</span></div>`;
+  }).join('');
+}
+document.querySelectorAll('[data-rg]').forEach(b=>b.addEventListener('click',()=>{RANGE=+b.dataset.rg; document.querySelectorAll('[data-rg]').forEach(x=>x.setAttribute('aria-pressed',x===b)); renderAsset()}));
+async function loadAll(){
+  const [st,dy,pr]=await Promise.all([getFile('data/state.enc.json'),getFile('data/daily.enc.json'),getFile('data/prices.enc.json')]);
+  if(!st) throw Object.assign(new Error('no state'),{code:'no_state'});
+  STATE=await openWeb(st.env,GH.viewPw); STATE_SHA=st.sha;
+  DAILY= dy? await openWeb(dy.env,GH.viewPw) : {records:[]};
+  PRICES= pr? await openWeb(pr.env,GH.viewPw) : null; PRICES_SHA=pr?.sha||null;
+}
+$('asReload').addEventListener('click',async()=>{
+  try{ await loadAll(); emit('*'); renderAsset(); msg($('asMsg'),'최신 데이터를 불러왔습니다.') }catch(e){ msg($('asMsg'),ghErrText(e),true) }
+});
+$('asRefresh').addEventListener('click',async()=>{
+  try{
+    await ensureWrite();
+    await gh('actions/workflows/daily.yml/dispatches',{method:'POST',tok:GH.writeTok,body:JSON.stringify({ref:GH.branch,inputs:{force:false}})});
+    msg($('asMsg'),'가격 갱신을 요청했습니다. 보통 1~2분 걸립니다. 끝나면 자동으로 불러옵니다.');
+    const before=PRICES_SHA;
+    for(let i=0;i<12;i++){ await new Promise(r=>setTimeout(r,15000)); const f=await getFile('data/prices.enc.json'); if(f&&f.sha!==before){ await loadAll(); emit('*'); renderAsset(); return msg($('asMsg'),'새 가격으로 갱신했습니다.') } }
+    msg($('asMsg'),'아직 끝나지 않았습니다. 잠시 후 다시 불러오기를 누르세요.');
+  }catch(e){ msg($('asMsg'), e.code==='cancelled'?'수정 비밀번호를 입력하지 않아 요청하지 않았습니다.': e.code==='no_write'?'이 기기에는 쓰기 토큰이 없어 요청할 수 없습니다.':ghErrText(e),true) }
+});
+$('fillFromAcct').addEventListener('click',()=>{
+  if(!STATE) return;
+  ACC.forEach(([k])=>{const p=STATE.portfolios?.[k]; if(p) $('f-bal-'+k).value=Math.round(acctValue(p)/1e4)}); updTotal();
+  msg($('formMsg'),'계좌 평가액(만원)으로 채웠습니다. 새로 넣은 돈을 확인한 뒤 저장하세요.');
+});
+
+/* 잠금 · 설정 화면 */
+function loadCfg(){try{return JSON.parse(localStorage.getItem(CFG_KEY)||'null')}catch{return null}}
+function showGate(mode){ $('gate').hidden=false; $('app').hidden=true; $('nav').hidden=true; $('unlockForm').hidden=mode!=='unlock'; $('setupForm').hidden=mode!=='setup'; if(mode==='unlock') setTimeout(()=>$('u-pw').focus(),50) }
+function openApp(){
+  $('gate').hidden=true; $('app').hidden=false; $('nav').hidden=false;
+  $('devInfo').textContent=`저장소 ${GH.repo} (${GH.branch}) · 이 기기: ${GH.cfg.writeTok?'보기·수정 가능 (수정할 때 수정 비밀번호 확인)':'보기 전용'}`;
+  startApp();
+}
+let started=false;
+function startApp(){
+  if(started){emit('*');renderAsset();return} started=true; DB=STORE;
+  DB.doc('settings/main').onSnapshot(s=>{ if(s.exists){S={...DEF,...s.data()}; fillSettings(); render()} });
+  DB.collection('records').onSnapshot(q=>{
+    RECS=q.docs.map(x=>x.data());
+    if(!editing){const sorted=[...RECS].sort((a,b)=>a.month<b.month?-1:1); const last=sorted[sorted.length-1];
+      if(last){ ACC.forEach(([k])=>{const el=$('f-bal-'+k); if(el.value==='') el.value=last.bal?.[k]??''}); updTotal() } }
+    render();
+  });
+  DB.doc('strategy/main').onSnapshot(s=>{ ST=s.exists?s.data():null; stIdx=clone(ST?.indices||[]); stRenderAll(); if(!dirty&&draft) rbRenderAll() });
+  DB.collection('portfolios').onSnapshot(q=>{
+    PF={}; q.docs.forEach(x=>PF[x.id]=x.data());
+    if(!cur||!PF[cur]) {cur=pfList()[0]?.[0]||null; dirty=false}
+    if(!dirty){draft=cur?clone(PF[cur]):null; rbRenderAll()} else rbSeg();
+    renderAsset();
+  });
+  renderAsset();
+}
+$('unlockForm').addEventListener('submit',async e=>{
+  e.preventDefault(); const pw=$('u-pw').value; $('u-btn').disabled=true; msg($('u-msg'),'여는 중…');
+  try{
+    let tok; try{ tok=await openWeb(GH.cfg.readTok,pw) }catch{ throw Object.assign(new Error('pw'),{code:'pw'}) }
+    GH.readTok=tok; GH.viewPw=pw; await loadAll(); $('u-pw').value=''; msg($('u-msg'),''); openApp();
+  }catch(err){ msg($('u-msg'), err.code==='pw'?'보기 비밀번호가 맞지 않습니다.': err.code==='no_state'?'저장소에 데이터가 없습니다. 이 기기 설정을 다시 하면서 초기 데이터를 올리세요.': err.name==='OperationError'?'저장소 데이터를 이 비밀번호로 열 수 없습니다.' : ghErrText(err),true) }
+  finally{ $('u-btn').disabled=false }
+});
+$('u-reset').addEventListener('click',()=>showGate('setup'));
+$('setupForm').addEventListener('submit',async e=>{
+  e.preventDefault();
+  const repo=$('s1-repo').value.trim().replace(/^https:\/\/github\.com\//,'').replace(/\/$/,''), branch=$('s1-branch').value.trim()||'main';
+  const vpw=$('s1-vpw').value, rtok=$('s1-rtok').value.trim(), epw=$('s1-epw').value, wtok=$('s1-wtok').value.trim();
+  if(!/^[\w.-]+\/[\w.-]+$/.test(repo)) return msg($('s1-msg'),'저장소를 "소유자/이름" 형식으로 입력하세요.',true);
+  if(vpw.length<8||!rtok) return msg($('s1-msg'),'보기 비밀번호(8자 이상)와 읽기 토큰을 입력하세요.',true);
+  if(wtok&&epw.length<8) return msg($('s1-msg'),'쓰기 토큰을 넣었다면 수정 비밀번호(8자 이상)도 입력하세요.',true);
+  if(wtok&&epw===vpw) return msg($('s1-msg'),'수정 비밀번호는 보기 비밀번호와 다르게 정하세요.',true);
+  $('s1-btn').disabled=true; msg($('s1-msg'),'저장소를 확인하는 중…');
+  try{
+    Object.assign(GH,{repo,branch,readTok:rtok,viewPw:vpw,writeTok:wtok||null});
+    const st=await getFile('data/state.enc.json');
+    if(!st){
+      $('seedBox').hidden=false;
+      const f=$('s1-seed').files[0];
+      if(!f) return msg($('s1-msg'),'저장소에 데이터가 없습니다. seed.json 파일을 선택한 뒤 다시 누르세요.',true);
+      if(!wtok) return msg($('s1-msg'),'초기 데이터를 올리려면 쓰기 토큰이 필요합니다.',true);
+      const seed=JSON.parse(await f.text()); if(!seed.state?.portfolios) return msg($('s1-msg'),'seed.json 형식이 아닙니다.',true);
+      msg($('s1-msg'),'초기 데이터를 암호화해서 올리는 중…');
+      await putFile('data/state.enc.json',await sealWeb(seed.state,vpw),null,'초기 데이터');
+      if(seed.daily) await putFile('data/daily.enc.json',await sealWeb(seed.daily,vpw),(await getFile('data/daily.enc.json'))?.sha,'엑셀 일별 기록');
+      $('s1-seed').value='';
+    } else {
+      try{ await openWeb(st.env,vpw) }catch{ return msg($('s1-msg'),'보기 비밀번호가 저장소 데이터의 비밀번호와 다릅니다.',true) }
+    }
+    const cfg={repo,branch,readTok:await sealWeb(rtok,vpw,true),writeTok:wtok?await sealWeb(wtok,epw,true):null};
+    try{localStorage.setItem(CFG_KEY,JSON.stringify(cfg))}catch{}
+    GH.cfg=cfg; GH.writeTok=null; ['s1-vpw','s1-rtok','s1-epw','s1-wtok'].forEach(i=>$(i).value='');
+    await loadAll(); msg($('s1-msg'),''); openApp();
+  }catch(err){ msg($('s1-msg'),ghErrText(err),true) }
+  finally{ $('s1-btn').disabled=false }
+});
+$('lockBtn').addEventListener('click',()=>location.reload());
+$('forgetBtn').addEventListener('click',()=>{const b=$('forgetBtn'); if(b.dataset.armed!=='1'){b.dataset.armed='1';b.textContent='한 번 더 누르면 지웁니다';return} try{localStorage.removeItem(CFG_KEY)}catch{} location.reload()});
+
+(()=>{ const cfg=loadCfg(); if(cfg?.repo&&cfg.readTok){ GH.cfg=cfg; GH.repo=cfg.repo; GH.branch=cfg.branch||'main'; showGate('unlock') } else showGate('setup') })();
+</script>
+</body>
+</html>
