@@ -270,12 +270,16 @@ input:disabled{opacity:.75}
 
     <div class="card">
       <h2>투자 실적</h2>
+      <div class="seg" role="group" aria-label="실적 기간">
+        <button type="button" data-pv="all" aria-pressed="true">전체</button>
+        <button type="button" data-pv="ytd" aria-pressed="false">올해</button>
+      </div>
       <div class="kv">
         <div><span class="k">현재 금융자산</span><span class="v num" id="rNow">–</span></div>
-        <div><span class="k">기록 기간 적립</span><span class="v num" id="rAdd">–</span></div>
-        <div><span class="k">기록 기간 투자손익</span><span class="v num" id="rGain">–</span></div>
-        <div><span class="k">연환산 수익률</span><span class="v num" id="rTwr">–</span></div>
-        <div><span class="k">올해 배당·이자</span><span class="v num" id="rDiv">–</span></div>
+        <div><span class="k" id="kAdd">기록 기간 적립</span><span class="v num" id="rAdd">–</span></div>
+        <div><span class="k" id="kGain">기록 기간 투자손익</span><span class="v num" id="rGain">–</span></div>
+        <div><span class="k" id="kTwr">연환산 수익률</span><span class="v num" id="rTwr">–</span></div>
+        <div><span class="k" id="kDiv">배당·이자</span><span class="v num" id="rDiv">–</span></div>
       </div>
       <div id="histChart" role="img" aria-label="월별 금융자산 추이"></div>
       <p class="note" id="realNote"></p>
@@ -525,7 +529,7 @@ input:disabled{opacity:.75}
 const ACC=[['pension','연금저축'],['irp','IRP'],['dc','DC'],['isa','ISA'],['stock','일반계좌'],['gold','금'],['cash','예금·현금']];
 // 실제 값은 암호화된 settings 에서 불러옵니다. 여기는 공개 코드이므로 일반적인 기본값만 둡니다.
 const DEF={birthYear:1985,birthMonth:1,targetAge:60,endAge:95,spend:300,nps:100,npsAge:65,infl:2.5,preR:5,postR:4,consDelta:1,pensionMonthly:0,dcAnnual:0,paceMonths:12};
-let S={...DEF}, RECS=[], SC='base', DB=null, editing=null;
+let S={...DEF}, RECS=[], SC='base', DB=null, editing=null, PV='all';
 const $=id=>document.getElementById(id);
 const n=v=>{const x=Number(v);return Number.isFinite(x)?x:0};
 
@@ -714,13 +718,25 @@ function render(){
   $('projChart').innerHTML=projSVG(d,lines,S.targetAge);
   $('projNote').textContent= cur.ok? `현재 속도로 ${S.targetAge}세에 은퇴해도 ${S.endAge}세까지 자산이 남습니다.` : `현재 속도로 ${S.targetAge}세에 은퇴하면 ${ageTxt(cur.depM+1)}에 자산이 바닥납니다.`;
   // 실적
-  $('rNow').textContent=won(d.A0); $('rAdd').textContent=won(d.addSum); $('rGain').textContent=won(d.gainSum);
-  $('rTwr').textContent= d.twr===null?'–':pct(d.twr);
-  { const y=String(new Date().getFullYear()); let dv=0;
-    for(const p of Object.values(PF||{})) for(const x of p.deposits||[]) if(x.type==='div'&&String(x.date).startsWith(y)) dv+=n(x.amount);
-    $('rDiv').textContent=won(dv/1e4); }
-  $('histChart').innerHTML=histSVG(d.rows);
-  $('realNote').textContent= d.span<12? `기록 ${d.span}개월치 연환산이라 변동이 큽니다. '실적' 시나리오는 12개월 이상 쌓인 뒤 참고하세요. (은퇴 전 수익률은 -5~12% 범위로 제한)` : `기록 ${d.span}개월 기준 시간가중 수익률입니다.`;
+  const y=todayStr().slice(0,4), fmtM=m=>m.replace('-','.');
+  let dv=0; for(const p of Object.values(PF||{})) for(const x of p.deposits||[]) if(x.type==='div'&&(PV==='all'||String(x.date).startsWith(y))) dv+=n(x.amount);
+  $('rNow').textContent=won(d.A0); $('rDiv').textContent=won(dv/1e4);
+  if(PV==='ytd'){
+    // 올해: 작년 마지막 기록을 출발점으로, 올해 달들의 적립·손익을 더하고 수익률은 연초 대비(연환산 아님)
+    const yr=d.rows.filter(x=>x.r.month.startsWith(y)&&x.ret!==null), i0=d.rows.findIndex(x=>x.r.month.startsWith(y));
+    const add=yr.reduce((a,x)=>a+x.C,0), gain=yr.reduce((a,x)=>a+x.gain,0), ytd=yr.length? yr.reduce((g,x)=>g*(1+x.ret),1)-1 : null;
+    const start= i0>0? d.rows[i0-1].r.month : (d.rows[i0]?.r.month||'');
+    $('kAdd').textContent=`${y}년 적립`; $('kGain').textContent=`${y}년 투자손익`; $('kTwr').textContent=`${y}년 수익률 (연초 대비)`; $('kDiv').textContent=`${y}년 배당·이자`;
+    $('rAdd').textContent=won(add); $('rGain').textContent=won(gain); $('rTwr').textContent= ytd===null?'–':pct(ytd);
+    $('histChart').innerHTML=histSVG(i0>0? d.rows.slice(i0-1) : d.rows.slice(Math.max(0,i0)));
+    $('realNote').textContent= yr.length? `${fmtM(start)} 잔고에서 출발해 ${fmtM(yr[0].r.month)}~${fmtM(yr.at(-1).r.month)} ${yr.length}개월을 계산했습니다. 수익률은 연환산하지 않은 올해 누적값입니다.` : '올해 기록이 아직 없습니다.';
+  } else {
+    $('kAdd').textContent='기록 기간 적립'; $('kGain').textContent='기록 기간 투자손익'; $('kTwr').textContent='연환산 수익률'; $('kDiv').textContent='배당·이자 (전체)';
+    $('rAdd').textContent=won(d.addSum); $('rGain').textContent=won(d.gainSum); $('rTwr').textContent= d.twr===null?'–':pct(d.twr);
+    $('histChart').innerHTML=histSVG(d.rows);
+    const f=d.rows[0]?.r.month||'', l=d.rows.at(-1)?.r.month||'';
+    $('realNote').textContent= `${fmtM(f)} 잔고에서 출발해 ${fmtM(l)}까지 ${d.span}개월 기준입니다. ` + (d.span<12? `12개월 미만을 연환산해서 변동이 큽니다. '실적' 시나리오는 12개월 이상 쌓인 뒤 참고하세요. (은퇴 전 수익률은 -5~12% 범위로 제한)` : '시간가중 수익률을 1년 기준으로 환산했습니다.');
+  }
 }
 function renderHistory(d){
   const tb=$('histBody');
@@ -807,6 +823,8 @@ document.querySelectorAll('[data-sc]').forEach(b=>b.addEventListener('click',()=
   if(b.disabled) return; SC=b.dataset.sc; document.querySelectorAll('[data-sc]').forEach(x=>x.setAttribute('aria-pressed',x===b)); render();
   try{localStorage.setItem('sc',SC)}catch{}
 }));
+document.querySelectorAll('[data-pv]').forEach(b=>b.addEventListener('click',()=>{ PV=b.dataset.pv; document.querySelectorAll('[data-pv]').forEach(x=>x.setAttribute('aria-pressed',x===b)); render(); try{localStorage.setItem('pv',PV)}catch{} }));
+try{const v=localStorage.getItem('pv'); if(v==='ytd'){PV='ytd'; document.querySelectorAll('[data-pv]').forEach(x=>x.setAttribute('aria-pressed',x.dataset.pv==='ytd'))}}catch{}
 try{const t=localStorage.getItem('tab'); if(t&&t!=='home') $('t-'+t).click(); const sc=localStorage.getItem('sc'); if(sc&&sc!=='real'){SC=sc;document.querySelectorAll('[data-sc]').forEach(x=>x.setAttribute('aria-pressed',x.dataset.sc===sc))}}catch{}
 
 /* ---------- 리밸런싱 ---------- */
