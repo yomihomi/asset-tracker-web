@@ -106,6 +106,9 @@ nav.tabs button[aria-current="page"]{color:var(--accent);font-weight:700;backgro
 .ord .oa-row{grid-column:1/-1;display:flex;justify-content:space-between;align-items:center;gap:8px}
 .ord .oa{font-size:13.5px;font-weight:600}
 .btn.sm{padding:7px 12px;font-size:13.5px;flex:none}
+label.chk{flex-direction:row;align-items:center;gap:8px;color:var(--ink)}
+label.chk input{width:auto;accent-color:var(--accent)}
+.lock-tag{font-size:11.5px;color:var(--muted);font-weight:600}
 .btn.sm[data-armed="1"]{background:var(--accent);color:var(--surface)}
 .ord.buy select{color:var(--good)} .ord.sell select{color:var(--bad)}
 .ord.none input,.ord.none .u{opacity:.4}
@@ -405,6 +408,7 @@ input:disabled{opacity:.75}
         <legend>계좌 설정</legend>
         <label>계좌 이름<input type="text" id="rb-name" maxlength="20"></label>
         <label>전체 리밸런싱 신호 (±%p)<input type="number" inputmode="decimal" id="rb-band" step="any"></label>
+        <label class="full chk"><input type="checkbox" id="rb-lock"> 목표 % 잠금 <span class="note">(실수로 바뀌지 않게. 바꿀 때만 잠깐 풀기)</span></label>
       </fieldset>
       <div class="row">
         <input type="text" id="rb-newName" maxlength="20" placeholder="새 계좌 이름 (예: ISA)" style="flex:2">
@@ -699,6 +703,7 @@ let PF={}, cur=null, draft=null, dirty=false, MD='buy', switchArmed=null, ORD={}
 const wonF=v=>Math.round(v).toLocaleString('ko-KR')+'원';
 const clone=o=>JSON.parse(JSON.stringify(o));
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const wLocked=p=>p? (p.lockW ?? (p.items||[]).some(x=>n(x.w)>0)) : false;
 function pfList(){return Object.entries(PF).sort((a,b)=>(a[1].order??99)-(b[1].order??99))}
 function rbPlan(p,dep,md){
   const it=(p.items||[]).map(x=>({...x,price:autoP(x)??n(x.price)})), cash=n(p.cash)+n(dep); // 달러 예수금은 리밸런싱 현금에 넣지 않음
@@ -726,7 +731,7 @@ function rbSeg(){
 function rbRenderAll(){
   rbSeg();
   if(!draft){$('rbItems').innerHTML='<p class="empty">계좌가 없습니다. 아래 계좌 설정에서 계좌를 추가하세요.</p>';['rbTot','rbBuy','rbSell','rbLeft'].forEach(i=>$(i).textContent='–');return}
-  $('rb-cash').value=draft.cash??0; $('rb-name').value=draft.name||''; $('rb-band').value=draft.band??5;
+  $('rb-cash').value=draft.cash??0; $('rb-name').value=draft.name||''; $('rb-band').value=draft.band??5; $('rb-lock').checked=wLocked(draft);
   const it=draft.items||[];
   $('rbItems').innerHTML= it.length? it.map((x,i)=>`<div class="item" data-i="${i}">
     <div class="item-h"><input type="text" data-f="name" id="it-${i}-name" value="${esc(x.name)}" aria-label="종목명"><button type="button" data-del="${i}" aria-label="종목 삭제">×</button></div>
@@ -735,7 +740,7 @@ function rbRenderAll(){
       <label>가격 출처<select data-f="src" id="it-${i}-src">${[['kr','자동 · 국내'],['us','자동 · 미국'],['gold','자동 · 금 현물'],['manual','직접 입력']].map(([v,t])=>`<option value="${v}" ${(x.src||'manual')===v?'selected':''}>${t}</option>`).join('')}</select></label>
     </div>
     <div class="item-g">
-      <label>목표 %<input type="number" inputmode="decimal" step="any" data-f="w" id="it-${i}-w" value="${n(x.w)}"></label>
+      <label>목표 %<input type="number" inputmode="decimal" step="any" data-f="w" id="it-${i}-w" value="${n(x.w)}" ${Array.isArray(x.ws)||wLocked(draft)?'disabled':''}>${Array.isArray(x.ws)?'<span class="lock-tag">단계에 따라 자동</span>':wLocked(draft)?'<span class="lock-tag">잠김</span>':''}</label>
       <label>보유 수량<input type="number" inputmode="numeric" step="any" data-f="qty" id="it-${i}-qty" value="${n(x.qty)}"></label>
       <label>현재가 (원)<input type="number" inputmode="numeric" step="any" data-f="price" id="it-${i}-price" value="${n(autoP(x)??x.price)}" ${autoP(x)?'disabled':''}>${autoP(x)?`<span class="auto-tag">자동 · ${esc(PRICES?.date?.slice(5).replace('-','/')||'')}</span>`:''}</label>
     </div>
@@ -806,6 +811,7 @@ $('rbItems').addEventListener('click',e=>{
 });
 $('rb-cash').addEventListener('input',e=>{if(draft){draft.cash=n(e.target.value);rbDirty();rbCalc()}});
 $('rb-name').addEventListener('input',e=>{if(draft){draft.name=e.target.value;rbDirty()}});
+$('rb-lock').addEventListener('change',e=>{ if(!draft) return; draft.lockW=e.target.checked; rbDirty(); rbRenderAll(); msg($('rbMsg'), e.target.checked?'목표 %를 잠갔습니다. 변경 저장을 누르세요.':'목표 % 잠금을 풀었습니다. 고친 뒤 다시 잠그고 변경 저장을 누르세요.') });
 $('rb-band').addEventListener('input',e=>{if(draft){draft.band=n(e.target.value)||5;rbDirty();rbCalc()}});
 document.querySelectorAll('[data-md]').forEach(b=>b.addEventListener('click',()=>{MD=b.dataset.md; ORD={};document.querySelectorAll('[data-md]').forEach(x=>x.setAttribute('aria-pressed',x===b));rbCalc()}));
 $('pfSeg').addEventListener('click',e=>{
