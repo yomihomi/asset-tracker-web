@@ -220,7 +220,7 @@ input:disabled{opacity:.75}
       <div class="big num" id="heroAge">–</div>
       <span class="chip warn" id="heroChip">계산 중</span>
       <div class="kv">
-        <div><span class="k">현재 저축 속도</span><span class="v num" id="kvPace">–</span></div>
+        <div><span class="k">현재 저축 속도</span><span class="v num" id="kvPace">–</span><span class="note" id="kvPaceSub"></span></div>
         <div><span class="k">고정 저축만 유지 시</span><span class="v num" id="kvFixed">–</span></div>
         <div><span class="k">적용 수익률 (은퇴 전/후)</span><span class="v num" id="kvRate">–</span></div>
       </div>
@@ -458,7 +458,7 @@ input:disabled{opacity:.75}
       <p class="toast" id="pinMsg" role="status"></p>
       <div class="row"><button class="btn ghost" type="button" id="lockBtn">지금 잠그기</button><button class="btn danger" type="button" id="forgetBtn">이 기기 설정 지우기</button></div>
       <p class="note" id="devInfo"></p>
-      <p class="note">고정 저축은 회사를 그만두거나 수입이 줄어도 유지할 수 있는 최소 납입액입니다. 기타 추가 적립은 입력한 기록의 최근 평균으로 자동 계산합니다. 세금과 건강보험료는 월 생활비 안에 포함된 것으로 봅니다.</p>
+      <p class="note">현재 저축 속도는 입력 탭에 적은 실제 입금(연금저축+IRP, 기타 추가 적립)의 최근 평균으로 계산합니다. 여기 적는 연금 월 납입은 기록이 없을 때만 씁니다. DC는 1년에 한 번 들어오므로, 기록이 12개월 쌓이기 전까지는 여기 적은 연 입금액 ÷ 12를 씁니다. '고정 저축만 유지 시'는 기타 추가 적립이 0이 되는 경우입니다. 세금과 건강보험료는 월 생활비 안에 포함된 것으로 봅니다.</p>
     </div>
   </section>
 </div>
@@ -510,11 +510,16 @@ function derive(){
     g*=1+ret; span+=mGap; addSum+=C; gainSum+=gain; rows.push({r,V1,C,gain,ret});
   });
   const twr= span>0? Math.pow(g,12/span)-1 : null;
-  // 저축 속도: 최근 N개월 기타 적립 평균 (첫 기록 제외)
+  // 저축 속도: 입력한 기록(첫 기록 제외)의 최근 N개월 실제 입금 평균
+  // DC는 1년에 한 번 들어오므로 기록이 12개월 이상일 때만 실제값(최근 12개월 ÷ 12), 그 전에는 설정값(연 금액 ÷ 12)
   const tail=recs.slice(1).slice(-S.paceMonths);
-  const otherAvg= tail.length? tail.reduce((a,r)=>a+n(r.add?.other),0)/tail.length : 0;
-  const fixedM=S.pensionMonthly+S.dcAnnual/12;
-  return {recs,last,ageM,A0,twr,span,addSum,gainSum,rows,otherAvg,fixedM};
+  const avg=f=>tail.length? tail.reduce((a,r)=>a+n(r.add?.[f]),0)/tail.length : 0;
+  const pensionAvg= tail.length? avg('pension') : S.pensionMonthly;
+  const otherAvg=avg('other');
+  const dc12=recs.slice(1).slice(-12), dcReal=dc12.length>=12;
+  const dcM= dcReal? dc12.reduce((a,r)=>a+n(r.add?.dc),0)/12 : S.dcAnnual/12;
+  const fixedM=pensionAvg+dcM;
+  return {recs,last,ageM,A0,twr,span,addSum,gainSum,rows,otherAvg,fixedM,pensionAvg,dcM,dcReal,paceN:tail.length};
 }
 function rates(d){
   const pre=S.preR/100, post=S.postR/100, del=S.consDelta/100;
@@ -601,6 +606,7 @@ function render(){
   else if(E<=tM){chip.className='chip good';chip.textContent=`목표 ${S.targetAge}세보다 ${ageTxt(tM-E).replace('세','년')} 빠름`; if(E===tM) chip.textContent=`목표 ${S.targetAge}세 달성 가능`}
   else{const gap=E-tM; chip.className=gap>36?'chip bad':'chip warn'; chip.textContent=`목표 ${S.targetAge}세보다 ${ageTxt(gap).replace('세','년')} 늦음`}
   $('kvPace').textContent=`월 ${won(curSave)}`;
+  $('kvPaceSub').textContent=`연금 ${won(d.pensionAvg)} + DC ${won(d.dcM)}${d.dcReal?'':'(설정값)'} + 기타 ${won(d.otherAvg)} · 최근 ${d.paceN}개월 입력 기준`;
   $('kvFixed').textContent=EF===null?'75세 이후':ageTxt(EF);
   $('kvRate').textContent=`${pct(r.pre)} / ${pct(r.post)}`;
   // 목표 갭
