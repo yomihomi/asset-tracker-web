@@ -103,7 +103,10 @@ nav.tabs button[aria-current="page"]{color:var(--accent);font-weight:700;backgro
 .ord select,.ord input{padding:7px 8px;font-size:15px;background:var(--surface)}
 .ord select{width:auto;font-weight:600}
 .ord .u{font-size:13px;color:var(--muted)}
-.ord .oa{grid-column:1/-1;text-align:right;font-size:13.5px;font-weight:600}
+.ord .oa-row{grid-column:1/-1;display:flex;justify-content:space-between;align-items:center;gap:8px}
+.ord .oa{font-size:13.5px;font-weight:600}
+.btn.sm{padding:7px 12px;font-size:13.5px;flex:none}
+.btn.sm[data-armed="1"]{background:var(--accent);color:var(--surface)}
 .ord.buy select{color:var(--good)} .ord.sell select{color:var(--bad)}
 .ord.none input,.ord.none .u{opacity:.4}
 .oa.buy{color:var(--good)} .oa.sell{color:var(--bad)} .oa.warn{color:var(--warn)}
@@ -394,10 +397,10 @@ input:disabled{opacity:.75}
       <h2>저장과 반영</h2>
       <div class="row">
         <button class="btn" type="button" id="rbSave">변경 저장</button>
-        <button class="btn ghost" type="button" id="rbApply">매매 완료 반영</button>
+        <button class="btn ghost" type="button" id="rbApply">남은 주문 모두 반영</button>
       </div>
       <p class="toast" id="rbMsg" role="status"></p>
-      <p class="note">'매매 완료 반영'은 종목마다 적힌 주문(매수·매도, 수량, 체결가) 그대로 보유 수량을 바꾸고, 예수금에서 매수 금액을 빼고 매도 금액을 더해 저장합니다. 실제 체결 내역에 맞게 고친 뒤 누르세요. 수수료·세금으로 생긴 몇 원 차이는 예수금 칸을 고치고 '변경 저장'을 누르면 됩니다.</p>
+      <p class="note">체결된 종목은 그 종목의 '체결 반영'을 누르세요. 일부만 체결됐으면 수량을 체결된 만큼으로 고친 뒤 누릅니다. '남은 주문 모두 반영'은 적힌 주문 전부를 한꺼번에 처리합니다. 반영할 때는 주문(매수·매도, 수량, 체결가) 그대로 보유 수량을 바꾸고, 예수금에서 매수 금액을 빼고 매도 금액을 더해 저장합니다. 실제 체결 내역에 맞게 고친 뒤 누르세요. 수수료·세금으로 생긴 몇 원 차이는 예수금 칸을 고치고 '변경 저장'을 누르면 됩니다.</p>
       <fieldset>
         <legend>계좌 설정</legend>
         <label>계좌 이름<input type="text" id="rb-name" maxlength="20"></label>
@@ -742,7 +745,7 @@ function rbRenderAll(){
       <select data-o="side" id="o-${i}-side" aria-label="주문 구분"><option value="buy">매수</option><option value="sell">매도</option><option value="none">주문 없음</option></select>
       <input type="number" inputmode="numeric" step="1" min="0" data-o="q" id="o-${i}-q" aria-label="주문 수량"><span class="u">주 ×</span>
       <input type="number" inputmode="numeric" step="any" min="0" data-o="p" id="o-${i}-p" aria-label="체결가"><span class="u">원</span>
-      <span class="oa num" id="oa-${i}"></span>
+      <div class="oa-row"><span class="oa num" id="oa-${i}"></span><button class="btn ghost sm" type="button" data-apply="${i}" id="ap-${i}">체결 반영</button></div>
     </div></div>`).join('') : '<p class="empty">종목이 없습니다. 종목 추가를 누르세요.</p>';
   rbCalc();
 }
@@ -774,6 +777,7 @@ function rbCalc(){
     if(o.side==='sell'&&n(o.q)>n(x.qty)){oa.className='oa num warn'; oa.textContent=`보유 ${n(x.qty)}주보다 많이 팔 수 없습니다`}
     else if(o.side==='none'||!amt){oa.className='oa num'; oa.textContent='유지'}
     else{oa.className='oa num '+o.side; oa.textContent=`${o.side==='buy'?'매수':'매도'} 금액 ${wonF(amt)}`}
+    const ap=$('ap-'+i); if(ap){ ap.hidden=!(o.side!=='none'&&n(o.q)>0); if(ap.dataset.armed!=='1') ap.textContent='체결 반영' }
   });
   const sig=$('rbSignal');
   if(cashAfter<0){sig.className='chip bad';sig.textContent=`예수금이 ${wonF(-cashAfter)} 부족합니다 · 수량이나 체결가를 확인하세요`}
@@ -823,25 +827,45 @@ $('rbDeposit').addEventListener('click',async()=>{
   await rbWrite({...draft,updatedAt:new Date().toISOString()},`${wonF(v)}을 예수금에 넣었습니다. 종목별 주문 안내를 확인하세요.`);
 });
 $('rbReset').addEventListener('click',()=>{ORD={}; rbCalc(); msg($('rbMsg'),'추천 주문으로 되돌렸습니다.')});
-$('rbApply').addEventListener('click',async()=>{
-  const b=$('rbApply'); if(!draft) return;
-  const next=clone(draft), trades=[]; let buy=0,sell=0; const over=[];
-  next.items.forEach((x,i)=>{ const o=ORD[i]; if(!o||o.side==='none'||!(n(o.q)>0)) return;
+// 주문 반영: idxs 에 있는 종목만 처리. 반영하지 않은 종목의 주문은 그대로 유지
+function buildApply(idxs){
+  const next=clone(draft), trades=[], over=[]; let buy=0,sell=0;
+  idxs.forEach(i=>{ const x=next.items[i], o=ORD[i]; if(!x||!o||o.side==='none'||!(n(o.q)>0)) return;
     const q=n(o.q), pr=n(o.p);
     if(o.side==='buy'){ x.qty=n(x.qty)+q; buy+=q*pr } else { if(q>n(x.qty)) over.push(x.name); x.qty=n(x.qty)-q; sell+=q*pr }
     if(pr>0) x.price=pr;
     trades.push({name:x.name,code:x.code||'',side:o.side,q,p:pr});
   });
-  if(over.length) return msg($('rbMsg'),`보유 수량보다 많이 팔 수 없습니다: ${over.join(', ')}`,true);
-  if(!trades.length) return msg($('rbMsg'),'반영할 주문이 없습니다. 수량을 확인하세요.',true);
   const cashAfter=Math.round(n(next.cash)-buy+sell);
-  if(cashAfter<0) return msg($('rbMsg'),`예수금이 ${wonF(-cashAfter)} 부족합니다. 수량이나 체결가를 확인하세요.`,true);
-  if(b.dataset.armed!=='1'){b.dataset.armed='1';b.textContent=`한 번 더 누르면 ${trades.length}건 반영`;setTimeout(()=>{b.dataset.armed='';b.textContent='매매 완료 반영'},5000);return}
-  b.dataset.armed='';b.textContent='매매 완료 반영';
+  const err= over.length? `보유 수량보다 많이 팔 수 없습니다: ${over.join(', ')}`
+    : !trades.length? '반영할 주문이 없습니다. 수량을 확인하세요.'
+    : cashAfter<0? `예수금이 ${wonF(-cashAfter)} 부족합니다. 수량이나 체결가를 확인하세요.` : '';
+  return {next,trades,buy,sell,cashAfter,err};
+}
+async function commitApply(idxs,res){
+  const {next,trades,buy,sell,cashAfter}=res;
   next.cash=cashAfter; next.updatedAt=new Date().toISOString();
   next.trades=[...(next.trades||[]),{date:todayStr(),buy:Math.round(buy),sell:Math.round(sell),cashAfter,items:trades}].slice(-200);
-  draft=next; ORD={};
-  await rbWrite(next,`${trades.length}건을 반영했습니다. 매수 ${wonF(buy)} · 매도 ${wonF(sell)} · 예수금 ${wonF(cashAfter)}`); rbRenderAll();
+  // 반영한 종목은 남은 부족분을 다시 추천, 나머지 종목은 지금 주문을 그대로 고정
+  Object.keys(ORD).forEach(k=>{ if(idxs.includes(+k)) delete ORD[k]; else if(ORD[k]) ORD[k].edited=true });
+  draft=next;
+  const nm= trades.length===1? `${trades[0].name} ${trades[0].side==='buy'?'매수':'매도'} ${trades[0].q.toLocaleString('ko-KR')}주` : `${trades.length}건`;
+  await rbWrite(next,`${nm} 반영 완료 · 매수 ${wonF(buy)} · 매도 ${wonF(sell)} · 예수금 ${wonF(cashAfter)}`); rbRenderAll();
+}
+$('rbItems').addEventListener('click',async e=>{
+  const b=e.target.closest('[data-apply]'); if(!b||!draft) return;
+  const i=+b.dataset.apply, res=buildApply([i]);
+  if(res.err) return msg($('rbMsg'),res.err,true);
+  if(b.dataset.armed!=='1'){ b.dataset.armed='1'; b.textContent='한 번 더 누르면 반영'; setTimeout(()=>{ if(b.isConnected){b.dataset.armed=''; b.textContent='체결 반영'} },5000); return }
+  b.dataset.armed=''; await commitApply([i],res);
+});
+$('rbApply').addEventListener('click',async()=>{
+  const b=$('rbApply'); if(!draft) return;
+  const idxs=(draft.items||[]).map((_,i)=>i), res=buildApply(idxs);
+  if(res.err) return msg($('rbMsg'),res.err,true);
+  if(b.dataset.armed!=='1'){b.dataset.armed='1';b.textContent=`한 번 더 누르면 ${res.trades.length}건 반영`;setTimeout(()=>{b.dataset.armed='';b.textContent='남은 주문 모두 반영'},5000);return}
+  b.dataset.armed='';b.textContent='남은 주문 모두 반영';
+  await commitApply(idxs,res);
 });
 $('rbAddPf').addEventListener('click',async()=>{
   const nm=$('rb-newName').value.trim(); if(!nm) return msg($('rbMsg'),'새 계좌 이름을 입력하세요.',true);
