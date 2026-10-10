@@ -581,21 +581,25 @@ function derive(){
   const twr= span>0? Math.pow(g,12/span)-1 : null;
   // 저축 속도: 입력한 기록(첫 기록 제외)의 최근 N개월 실제 입금 평균
   // DC는 1년에 한 번 들어오므로 기록이 12개월 이상일 때만 실제값(최근 12개월 ÷ 12), 그 전에는 설정값(연 금액 ÷ 12)
-  // 입력 탭 기록 + 리밸런싱 탭 입금 기록(아직 월말 기록이 없는 달 포함)
-  const dep=depMonthly(), recAdd={}; recs.slice(1).forEach(r=>{ if(!r._auto) recAdd[r.month]=r.add||{} });  // 자동 기록 달은 아래 입금 기록으로 판단
-  const months=new Set(Object.keys(recAdd));
-  if(dep.start){ const now=todayStr().slice(0,7); for(let m=dep.start; m<=now; m=nextYm(m)){ if(m===now&&!dep.by[m]) continue; months.add(m) } }
-  // 같은 달에 입력 탭 기록과 리밸런싱 입금이 둘 다 있으면 항목별로 큰 값 (중복 없이, 빠짐 없이)
+  // 저축 속도: 기록 시작 달부터, 이번 달에 저축 입금이 있으면 이번 달까지 · 없으면 지난달까지.
+  // 기간 안의 입금 없는 달은 0원으로 포함, 같은 달 여러 번 입금은 합산(depMonthly), 입력 기록과 겹치면 항목별 큰 값.
+  const dep=depMonthly(), recAdd={}; recs.slice(1).forEach(r=>{ if(!r._auto) recAdd[r.month]=r.add||{} });  // 자동 기록 달은 입금 기록으로 판단
+  const prevYm=m=>{let [y,mo]=m.split('-').map(Number); mo--; if(mo<1){mo=12;y--} return `${y}-${String(mo).padStart(2,'0')}`};
+  const now=todayStr().slice(0,7);
+  const hasSave=m=> (dep.by[m]&&(dep.by[m].pension+dep.by[m].dc+dep.by[m].other)>0) || (recAdd[m]&&addOf({add:recAdd[m]})>0);
+  const firsts=[recs[1]?.month, dep.start].filter(Boolean).sort();
+  const trackStart=firsts[0]||now, end= hasSave(now)? now : prevYm(now);
   const val=m=>{ const r=recAdd[m], d=dep.by[m], g=f=>Math.max(n(r?.[f]), n(d?.[f]));
     return {src:d?'dep':'rec', pension:g('pension'), dc:g('dc'), other:g('other')} };
-  const ms=[...months].sort(), tail=ms.slice(-S.paceMonths).map(val);
+  const ms=[]; for(let m=trackStart; m<=end; m=nextYm(m)) ms.push(m);
+  const win=ms.slice(-S.paceMonths), tail=win.map(val);
   const avg=f=>tail.length? tail.reduce((a,x)=>a+x[f],0)/tail.length : 0;
   const pensionAvg= tail.length? avg('pension') : S.pensionMonthly;
   const otherAvg=avg('other');
   const last12=ms.slice(-12).map(val), dcReal=last12.length>=12;
   const dcM= dcReal? last12.reduce((a,x)=>a+x.dc,0)/12 : S.dcAnnual/12;
   const fixedM=pensionAvg+dcM;
-  return {recs,last,ageM,A0,twr,span,addSum,gainSum,rows,otherAvg,fixedM,pensionAvg,dcM,dcReal,paceN:tail.length,paceDep:tail.filter(x=>x.src==='dep').length};
+  return {recs,last,ageM,A0,twr,span,addSum,gainSum,rows,otherAvg,fixedM,pensionAvg,dcM,dcReal,paceN:tail.length,paceDep:tail.filter(x=>x.src==='dep').length,paceFrom:win[0]||'',paceTo:win.at(-1)||''};
 }
 function rates(d){
   const pre=S.preR/100, post=S.postR/100, del=S.consDelta/100;
@@ -682,7 +686,7 @@ function render(){
   else if(E<=tM){chip.className='chip good';chip.textContent=`목표 ${S.targetAge}세보다 ${ageTxt(tM-E).replace('세','년')} 빠름`; if(E===tM) chip.textContent=`목표 ${S.targetAge}세 달성 가능`}
   else{const gap=E-tM; chip.className=gap>36?'chip bad':'chip warn'; chip.textContent=`목표 ${S.targetAge}세보다 ${ageTxt(gap).replace('세','년')} 늦음`}
   $('kvPace').textContent=`월 ${won(curSave)}`;
-  $('kvPaceSub').textContent=`연금 ${won(d.pensionAvg)} + DC ${won(d.dcM)}${d.dcReal?'':'(설정값)'} + 기타 ${won(d.otherAvg)} · 최근 ${d.paceN}개월${d.paceDep?` (리밸런싱 입금이 있는 달 ${d.paceDep}개월 포함)`:' (월별 기록)'}`;
+  $('kvPaceSub').textContent=`연금 ${won(d.pensionAvg)} + DC ${won(d.dcM)}${d.dcReal?'':'(설정값)'} + 기타 ${won(d.otherAvg)} · ${d.paceN}개월 평균 (${d.paceFrom.replace('-','.')}~${d.paceTo.replace('-','.')}${d.paceTo&&d.paceTo<todayStr().slice(0,7)?', 이번 달 입금 전':''})`;
   $('kvFixed').textContent=EF===null?'75세 이후':ageTxt(EF);
   $('kvRate').textContent=`${pct(r.pre)} / ${pct(r.post)}`;
   // 목표 갭
