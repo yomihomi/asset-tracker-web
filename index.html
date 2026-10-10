@@ -896,7 +896,7 @@ function rbRenderAll(){
     <div class="item-g">
       <label>목표 %<input type="number" inputmode="decimal" step="any" data-f="w" id="it-${i}-w" value="${n(x.w)}" ${Array.isArray(x.ws)||wLocked(draft)?'disabled':''}>${Array.isArray(x.ws)?'<span class="lock-tag">단계에 따라 자동</span>':wLocked(draft)?'<span class="lock-tag">잠김</span>':''}</label>
       <label>보유 수량<input type="number" inputmode="numeric" step="any" data-f="qty" id="it-${i}-qty" value="${n(x.qty)}"></label>
-      <label>${x.src==='usdm'?'현재가 (USD)':'현재가 (원)'}<input type="number" inputmode="decimal" step="any" data-f="price" id="it-${i}-price" value="${x.src==='usdm'?n(x.price):n(autoP(x)??x.price)}" ${autoP(x)?'disabled':''}>${autoP(x)?`<span class="auto-tag">자동 · ${esc(PRICES?.date?.slice(5).replace('-','/')||'')}</span>`:x.src==='usdm'?`<span class="auto-tag">≈ ${wonF(epx(x))} (환율 ${n(PRICES?.fx).toLocaleString('ko-KR')})</span>`:''}</label>
+      <label>${x.src==='usdm'?'현재가 (USD)':'현재가 (원)'}<input type="number" inputmode="decimal" step="any" data-f="price" id="it-${i}-price" value="${x.src==='usdm'?n(x.price):n(autoP(x)??x.price)}" ${autoP(x)?'disabled':''}>${autoP(x)?`<span class="auto-tag">자동 · ${esc(PRICES?.date?.slice(5).replace('-','/')||'')}</span>`:x.src==='usdm'?`<span class="auto-tag">${usdTag(x)}</span>`:''}</label>
     </div>
     ${Array.isArray(x.ws)?`<label class="item-ws">단계별 목표 % (${esc((ST?.stages||[]).map(s=>sn(s.name).split(' ')[0]).join(' / ')||'중립형 / 1차 / 성장형')})<input type="text" inputmode="decimal" data-f="ws" id="it-${i}-ws" value="${x.ws.join(' / ')}"></label>`:''}
     <div class="item-r" id="ir-${i}"></div>
@@ -957,7 +957,7 @@ $('rbItems').addEventListener('input',e=>{
   const f=e.target.dataset.f, i=+e.target.closest('.item')?.dataset.i; if(!f||!draft) return;
   if(f==='src'||f==='code') return;
   draft.items[i][f]= f==='name'? e.target.value : f==='ws'? e.target.value.split('/').map(s=>n(s.trim())) : n(e.target.value); rbDirty(); rbCalc();
-  if(f==='price'&&draft.items[i].src==='usdm'){ const tg=e.target.parentElement.querySelector('.auto-tag'); if(tg) tg.textContent=`≈ ${wonF(epx(draft.items[i]))} (환율 ${n(PRICES?.fx).toLocaleString('ko-KR')})` }
+  if((f==='price'||f==='qty')&&draft.items[i].src==='usdm'){ const tg=$('it-'+i+'-price')?.parentElement.querySelector('.auto-tag'); if(tg) tg.textContent=usdTag(draft.items[i]) }
 });
 $('rbItems').addEventListener('change',e=>{
   const f=e.target.dataset.f, i=+e.target.closest('.item')?.dataset.i; if((f!=='src'&&f!=='code')||!draft) return;
@@ -1334,6 +1334,8 @@ const STORE={
 
 /* 자동 가격 */
 function autoP(x){ return (x&&x.src&&x.src!=='manual'&&PRICES?.prices?.[x.code]>0)? PRICES.prices[x.code] : null }
+// 달러 직접 입력 종목: 평가액(수량 × 달러 가격 × 환율)을 보여줌
+const usdTag=x=>`평가 ≈ ${wonF(n(x.qty)*epx(x))} = ${n(x.qty).toLocaleString('ko-KR')} × $${n(x.price).toLocaleString('ko-KR')} × 환율 ${n(PRICES?.fx).toLocaleString('ko-KR')}`;
 function epx(x){ return x?.src==='usdm'? n(x.price)*n(PRICES?.fx) : n(autoP(x)??x.price) }  // 원화 기준 가격
 function acctValue(p){ return (p.items||[]).reduce((a,x)=>a+n(x.qty)*epx(x),0)+n(p.cash)+n(p.cashUsd)*n(PRICES?.fx) }
 
