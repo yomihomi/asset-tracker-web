@@ -259,6 +259,7 @@ input:disabled{opacity:.75}
         <div><span class="k">기록 기간 적립</span><span class="v num" id="rAdd">–</span></div>
         <div><span class="k">기록 기간 투자손익</span><span class="v num" id="rGain">–</span></div>
         <div><span class="k">연환산 수익률</span><span class="v num" id="rTwr">–</span></div>
+        <div><span class="k">올해 배당·이자</span><span class="v num" id="rDiv">–</span></div>
       </div>
       <div id="histChart" role="img" aria-label="월별 금융자산 추이"></div>
       <p class="note" id="realNote"></p>
@@ -376,7 +377,7 @@ input:disabled{opacity:.75}
         <button class="btn ghost" type="button" id="rbDeposit">예수금에 입금</button>
       </div>
       <div class="row">
-        <select id="rb-depType" aria-label="입금 종류" style="flex:1;min-width:0"><option value="new">새로 들어온 돈 (저축으로 셈)</option><option value="xfer">다른 계좌에서 옮긴 돈</option></select>
+        <select id="rb-depType" aria-label="입금 종류" style="flex:1;min-width:0"><option value="new">새로 들어온 돈 (저축으로 셈)</option><option value="div">배당금·이자 (투자 수익)</option><option value="xfer">다른 계좌에서 옮긴 돈</option></select>
         <select id="rb-depFrom" aria-label="보낸 계좌" style="flex:1;min-width:0" hidden></select>
       </div>
       <p class="note" id="rbDepLog"></p>
@@ -517,12 +518,13 @@ function derive(){
   const twr= span>0? Math.pow(g,12/span)-1 : null;
   // 저축 속도: 입력한 기록(첫 기록 제외)의 최근 N개월 실제 입금 평균
   // DC는 1년에 한 번 들어오므로 기록이 12개월 이상일 때만 실제값(최근 12개월 ÷ 12), 그 전에는 설정값(연 금액 ÷ 12)
-  // 리밸런싱 탭 입금 기록이 있는 달부터는 그 기록을, 그 전 달은 입력 탭 기록을 씀
+  // 입력 탭 기록 + 리밸런싱 탭 입금 기록(아직 월말 기록이 없는 달 포함)
   const dep=depMonthly(), recAdd={}; recs.slice(1).forEach(r=>recAdd[r.month]=r.add||{});
   const months=new Set(Object.keys(recAdd));
   if(dep.start){ const now=todayStr().slice(0,7); for(let m=dep.start; m<=now; m=nextYm(m)){ if(m===now&&!dep.by[m]) continue; months.add(m) } }
-  const val=m=> dep.start&&m>=dep.start ? {src:'dep',pension:0,dc:0,other:0,...(dep.by[m]||{})}
-                                        : {src:'rec',pension:n(recAdd[m]?.pension),dc:n(recAdd[m]?.dc),other:n(recAdd[m]?.other)};
+  // 같은 달에 입력 탭 기록과 리밸런싱 입금이 둘 다 있으면 항목별로 큰 값 (중복 없이, 빠짐 없이)
+  const val=m=>{ const r=recAdd[m], d=dep.by[m], g=f=>Math.max(n(r?.[f]), n(d?.[f]));
+    return {src:d?'dep':'rec', pension:g('pension'), dc:g('dc'), other:g('other')} };
   const ms=[...months].sort(), tail=ms.slice(-S.paceMonths).map(val);
   const avg=f=>tail.length? tail.reduce((a,x)=>a+x[f],0)/tail.length : 0;
   const pensionAvg= tail.length? avg('pension') : S.pensionMonthly;
@@ -617,7 +619,7 @@ function render(){
   else if(E<=tM){chip.className='chip good';chip.textContent=`목표 ${S.targetAge}세보다 ${ageTxt(tM-E).replace('세','년')} 빠름`; if(E===tM) chip.textContent=`목표 ${S.targetAge}세 달성 가능`}
   else{const gap=E-tM; chip.className=gap>36?'chip bad':'chip warn'; chip.textContent=`목표 ${S.targetAge}세보다 ${ageTxt(gap).replace('세','년')} 늦음`}
   $('kvPace').textContent=`월 ${won(curSave)}`;
-  $('kvPaceSub').textContent=`연금 ${won(d.pensionAvg)} + DC ${won(d.dcM)}${d.dcReal?'':'(설정값)'} + 기타 ${won(d.otherAvg)} · 최근 ${d.paceN}개월${d.paceDep?` (리밸런싱 입금 ${d.paceDep}개월 + 입력 탭 ${d.paceN-d.paceDep}개월)`:' (입력 탭 기록)'}`;
+  $('kvPaceSub').textContent=`연금 ${won(d.pensionAvg)} + DC ${won(d.dcM)}${d.dcReal?'':'(설정값)'} + 기타 ${won(d.otherAvg)} · 최근 ${d.paceN}개월${d.paceDep?` (리밸런싱 입금이 있는 달 ${d.paceDep}개월 포함)`:' (입력 탭 기록)'}`;
   $('kvFixed').textContent=EF===null?'75세 이후':ageTxt(EF);
   $('kvRate').textContent=`${pct(r.pre)} / ${pct(r.post)}`;
   // 목표 갭
@@ -643,6 +645,9 @@ function render(){
   // 실적
   $('rNow').textContent=won(d.A0); $('rAdd').textContent=won(d.addSum); $('rGain').textContent=won(d.gainSum);
   $('rTwr').textContent= d.twr===null?'–':pct(d.twr);
+  { const y=String(new Date().getFullYear()); let dv=0;
+    for(const p of Object.values(PF||{})) for(const x of p.deposits||[]) if(x.type==='div'&&String(x.date).startsWith(y)) dv+=n(x.amount);
+    $('rDiv').textContent=won(dv/1e4); }
   $('histChart').innerHTML=histSVG(d.rows);
   $('realNote').textContent= d.span<12? `기록 ${d.span}개월치 연환산이라 변동이 큽니다. '실적' 시나리오는 12개월 이상 쌓인 뒤 참고하세요. (은퇴 전 수익률은 -5~12% 범위로 제한)` : `기록 ${d.span}개월 기준 시간가중 수익률입니다.`;
 }
@@ -881,7 +886,9 @@ $('rbDeposit').addEventListener('click',async()=>{
   draft.cash=before+v; draft.deposits=[...(draft.deposits||[]),entry].slice(-500);
   ORD={}; $('rb-dep').value=''; $('rb-cash').value=draft.cash; rbCalc();
   const ok=await rbWrite({...draft,updatedAt:new Date().toISOString()},
-    type==='new'? `${wonF(v)}을 예수금에 넣었습니다(저축으로 기록). 종목별 주문 안내를 확인하세요.` : `${PF[from]?.name||from}에서 ${wonF(v)}을 옮겼습니다(저축으로 세지 않음).`);
+    type==='new'? `${wonF(v)}을 예수금에 넣었습니다(저축으로 기록). 종목별 주문 안내를 확인하세요.`
+    : type==='div'? `배당금·이자 ${wonF(v)}을 예수금에 넣었습니다(투자 수익으로 기록, 저축에는 넣지 않음).`
+    : `${PF[from]?.name||from}에서 ${wonF(v)}을 옮겼습니다(저축으로 세지 않음).`);
   if(!ok){ draft.cash=before; draft.deposits=draft.deposits.slice(0,-1); $('rb-cash').value=draft.cash; rbCalc(); return }
   if(type==='xfer'){
     const src=clone(PF[from]); src.cash=n(src.cash)-v; src.deposits=[...(src.deposits||[]),{date:d,amount:-v,type:'xfer',to:cur}].slice(-500); src.updatedAt=new Date().toISOString();
@@ -894,7 +901,7 @@ function rbDepRender(){
   if(!draft) return;
   $('rb-depFrom').innerHTML='<option value="">보낸 계좌 선택</option>'+pfList().filter(([id])=>id!==cur).map(([id,p])=>`<option value="${esc(id)}">${esc(p.name||id)}</option>`).join('');
   const last=(draft.deposits||[]).slice(-5).reverse();
-  $('rbDepLog').textContent= last.length? '최근 입금: '+last.map(x=>`${x.date.slice(5).replace('-','/')} ${x.amount<0?'−':'+'}${won(Math.abs(x.amount)/1e4)}${x.type==='xfer'?(x.from?` (${PF[x.from]?.name||x.from}에서 이동)`:` (${PF[x.to]?.name||x.to}로 이동)`):''}`).join(' · ') : '아직 이 화면에서 입금한 기록이 없습니다. 새로 들어온 돈은 저축 속도에 자동 반영됩니다.';
+  $('rbDepLog').textContent= last.length? '최근 입금: '+last.map(x=>`${x.date.slice(5).replace('-','/')} ${x.amount<0?'−':'+'}${won(Math.abs(x.amount)/1e4)}${x.type==='div'?' (배당·이자)':x.type==='xfer'?(x.from?` (${PF[x.from]?.name||x.from}에서 이동)`:` (${PF[x.to]?.name||x.to}로 이동)`):''}`).join(' · ') : '아직 이 화면에서 입금한 기록이 없습니다. 새로 들어온 돈은 저축 속도에, 배당금·이자는 투자 수익에 반영됩니다.';
 }
 $('rbReset').addEventListener('click',()=>{ORD={}; rbCalc(); msg($('rbMsg'),'추천 주문으로 되돌렸습니다.')});
 // 주문 반영: idxs 에 있는 종목만 처리. 반영하지 않은 종목의 주문은 그대로 유지
@@ -1254,8 +1261,9 @@ $('asRefresh').addEventListener('click',async()=>{
 $('fillFromAcct').addEventListener('click',()=>{
   if(!STATE) return;
   ACC.forEach(([k])=>{const p=STATE.portfolios?.[k]; if(p) $('f-bal-'+k).value=Math.round(acctValue(p)/1e4)}); updTotal();
-  const dep=depMonthly(), m=$('f-month').value, dm=dep.start&&m>=dep.start? (dep.by[m]||{pension:0,dc:0,other:0}) : null;
-  if(dm){ $('f-add-pension').value=Math.round(dm.pension); $('f-add-dc').value=Math.round(dm.dc); $('f-add-other').value=Math.round(dm.other) }
+  const dep=depMonthly(), m=$('f-month').value, dm=dep.by[m]||null, rec=RECS.find(r=>r.month===m);
+  if(rec){ $('f-add-pension').value=n(rec.add?.pension); $('f-add-dc').value=n(rec.add?.dc); $('f-add-other').value=n(rec.add?.other) }  // 이미 저장한 그달 기록이 있으면 그 값에서 시작
+  if(dm){ [['pension','f-add-pension'],['dc','f-add-dc'],['other','f-add-other']].forEach(([k,id])=>{ $(id).value=Math.round(Math.max(n($(id).value),dm[k])) }) }
   msg($('formMsg'), dm? '계좌 평가액과 이번 달 리밸런싱 입금 내역(만원)으로 채웠습니다. 확인한 뒤 저장하세요.' : '계좌 평가액(만원)으로 채웠습니다. 새로 넣은 돈을 확인한 뒤 저장하세요.');
 });
 
