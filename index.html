@@ -343,6 +343,7 @@ input:disabled{opacity:.75}
           <label>연금저축+IRP<input type="number" inputmode="decimal" id="f-add-pension" step="any"></label>
           <label>DC 입금<input type="number" inputmode="decimal" id="f-add-dc" step="any"></label>
           <label class="full">기타 추가 적립 (ISA·일반·예금)<input type="number" inputmode="decimal" id="f-add-other" step="any"></label>
+          <label class="full">일회성 입금 (성과급·연 1회 ISA 등, 저축 속도 제외)<input type="number" inputmode="decimal" id="f-add-once" step="any"></label>
           <label class="full">메모<input type="text" id="f-note" maxlength="120" placeholder="예: 엑셀 값과 맞춤"></label>
         </fieldset>
         <p class="note" id="formTotal">합계 –</p>
@@ -412,7 +413,7 @@ input:disabled{opacity:.75}
         <button class="btn ghost" type="button" id="rbDeposit">예수금에 입금</button>
       </div>
       <div class="row">
-        <select id="rb-depType" aria-label="입금 종류" style="flex:1;min-width:0"><option value="new">새로 들어온 돈 (저축으로 셈)</option><option value="div">배당금·이자 (투자 수익)</option><option value="xfer">다른 계좌에서 옮긴 돈</option></select>
+        <select id="rb-depType" aria-label="입금 종류" style="flex:1;min-width:0"><option value="new">새로 들어온 돈 (저축으로 셈)</option><option value="once">일회성 입금 (저축 속도 제외)</option><option value="div">배당금·이자 (투자 수익)</option><option value="xfer">다른 계좌에서 옮긴 돈</option></select>
         <select id="rb-depFrom" aria-label="보낸 계좌" style="flex:1;min-width:0" hidden></select>
       </div>
       <p class="note" id="rbDepLog"></p>
@@ -554,8 +555,8 @@ function autoRecord(m){
       for(const t of p.trades||[]) if(String(t.date).slice(0,7)>m) v-=n(t.sell)-n(t.buy);
       bal[id]=v/1e4 }
   }
-  const dm=depMonthly().by[m]||{pension:0,dc:0,other:0};
-  return {month:m,bal,add:{pension:dm.pension,dc:dm.dc,other:dm.other},note:'',_auto:true};
+  const dm=depMonthly().by[m]||{pension:0,dc:0,other:0,once:0};
+  return {month:m,bal,add:{pension:dm.pension,dc:dm.dc,other:dm.other,once:dm.once||0},note:'',_auto:true};
 }
 function mergedRecs(){
   const saved=[...RECS].sort((a,b)=>a.month<b.month?-1:1);
@@ -564,7 +565,8 @@ function mergedRecs(){
   for(let m=nextYm(saved[0].month); m<=now; m=nextYm(m)) if(!have.has(m)){ const a=autoRecord(m); if(a) out.push(a) }
   return out.sort((a,b)=>a.month<b.month?-1:1);
 }
-function addOf(r){return n(r.add?.pension)+n(r.add?.dc)+n(r.add?.other)}
+function addOf(r){return n(r.add?.pension)+n(r.add?.dc)+n(r.add?.other)+n(r.add?.once)}  // 수익 계산용 입금 합계(일회성 포함)
+const saveOf=a=>n(a?.pension)+n(a?.dc)+n(a?.other);  // 저축 속도용(일회성 제외)
 function derive(){
   const recs=mergedRecs();
   if(!recs.length) return null;
@@ -588,7 +590,7 @@ function derive(){
   const dep=depMonthly(), recAdd={}; recs.slice(1).forEach(r=>{ if(!r._auto) recAdd[r.month]=r.add||{} });  // 자동 기록 달은 입금 기록으로 판단
   const prevYm=m=>{let [y,mo]=m.split('-').map(Number); mo--; if(mo<1){mo=12;y--} return `${y}-${String(mo).padStart(2,'0')}`};
   const now=todayStr().slice(0,7);
-  const hasSave=m=> (dep.by[m]&&(dep.by[m].pension+dep.by[m].dc+dep.by[m].other)>0) || (recAdd[m]&&addOf({add:recAdd[m]})>0);
+  const hasSave=m=> saveOf(dep.by[m])>0 || saveOf(recAdd[m])>0;
   const firsts=[recs[1]?.month, dep.start].filter(Boolean).sort();
   const trackStart=firsts[0]||now, end= hasSave(now)? now : prevYm(now);
   const val=m=>{ const r=recAdd[m], d=dep.by[m], g=f=>Math.max(n(r?.[f]), n(d?.[f]));
@@ -737,6 +739,7 @@ function fillForm(rec,asNew){
   $('f-add-pension').value= asNew? S.pensionMonthly : (rec?.add?.pension??'');
   $('f-add-dc').value= asNew? 0 : (rec?.add?.dc??'');
   $('f-add-other').value= asNew? 0 : (rec?.add?.other??'');
+  $('f-add-once').value= asNew? 0 : (rec?.add?.once??0);
   $('f-note').value= asNew? '' : (rec?.note||'');
   editing= asNew||rec?._auto? null : rec?.month||null;
   $('delRow').hidden=!editing; $('delLabel').textContent= editing? `저장된 ${editing.replace('-','년 ')}월 기록입니다. 삭제하면 자동 계산값으로 돌아갑니다.`:'';
@@ -755,7 +758,7 @@ $('recForm').addEventListener('submit',async e=>{
   e.preventDefault(); const m=$('f-month').value;
   if(!/^\d{4}-\d{2}$/.test(m)) return msg($('formMsg'),'기준 월을 선택하세요.',true);
   if(adding&&RECS.some(r=>r.month===m)) return msg($('formMsg'),`${m.replace('-','년 ')}월 기록은 이미 있습니다. 표에서 그 달을 눌러 고치세요.`,true);
-  const rec={month:m,bal:{},add:{pension:n($('f-add-pension').value),dc:n($('f-add-dc').value),other:n($('f-add-other').value)},note:$('f-note').value.trim()};
+  const rec={month:m,bal:{},add:{pension:n($('f-add-pension').value),dc:n($('f-add-dc').value),other:n($('f-add-other').value),once:n($('f-add-once').value)},note:$('f-note').value.trim()};
   const base=RECS.find(r=>r.month===m)||mergedRecs().find(r=>r.month===m); if(base) Object.assign(rec.bal,Object.fromEntries(Object.entries(base.bal||{}).map(([k,v])=>[k,Math.round(n(v))])));
   ACC.forEach(([k])=>rec.bal[k]=n($('f-bal-'+k).value));
   if(total(rec)<=0) return msg($('formMsg'),'계좌 잔고를 하나 이상 입력하세요.',true);
@@ -773,7 +776,7 @@ $('histBody').addEventListener('click',e=>{const tr=e.target.closest('tr[data-m]
 $('recClose').addEventListener('click',()=>{ $('recCard').hidden=true; adding=false });
 $('recAdd').addEventListener('click',()=>{
   adding=true; fillForm(null,true);
-  ['f-add-pension','f-add-dc','f-add-other'].forEach(id=>$(id).value=0); ACC.forEach(([k])=>$('f-bal-'+k).value='');
+  ['f-add-pension','f-add-dc','f-add-other','f-add-once'].forEach(id=>$(id).value=0); ACC.forEach(([k])=>$('f-bal-'+k).value='');
   $('recCard').hidden=false; msg($('formMsg'),'추가할 달을 고르고 계좌별 잔고와 그달 새로 넣은 돈을 만원 단위로 입력하세요.'); $('recCard').scrollIntoView({behavior:'smooth',block:'start'}); setTimeout(()=>$('f-month').focus(),300);
 });
 $('histBody').addEventListener('keydown',e=>{if(e.key==='Enter') e.target.click()});
@@ -819,8 +822,8 @@ function depMonthly(){
   const by={}; let start=null;
   for(const [id,p] of Object.entries(PF||{})) for(const d of p.deposits||[]){
     const m=String(d.date||'').slice(0,7); if(!m) continue; if(!start||m<start) start=m;
-    if(d.type!=='new') continue;
-    const c=d.cat||catOf(id); (by[m] ||= {pension:0,dc:0,other:0})[c]+=n(d.amount)/1e4;
+    if(d.type!=='new'&&d.type!=='once') continue;
+    const c= d.type==='once'? 'once' : (d.cat||catOf(id)); (by[m] ||= {pension:0,dc:0,other:0,once:0})[c]+=n(d.amount)/1e4;
   }
   return {by,start};
 }
@@ -972,7 +975,7 @@ let caDiff=0;
 function showCashAsk(diff){
   caDiff=diff; $('cashAsk').hidden=false;
   $('caText').textContent=`예수금이 ${diff>0?'+':'−'}${wonF(Math.abs(diff))} 바뀌었습니다. 어떤 돈인가요?`;
-  const opts= diff>0? [['new','새로 들어온 돈'],['div','배당금·이자'],['xfer','다른 계좌에서 옮긴 돈'],['adj','수수료·오차 정리']]
+  const opts= diff>0? [['new','새로 들어온 돈'],['once','일회성 입금'],['div','배당금·이자'],['xfer','다른 계좌에서 옮긴 돈'],['adj','수수료·오차 정리']]
                     : [['out','출금 (생활비 등)'],['xfer','다른 계좌로 옮긴 돈'],['adj','수수료·오차 정리']];
   $('caBtns').innerHTML=opts.map(([v,t])=>`<button class="btn ghost" type="button" data-ca="${v}">${t}</button>`).join('');
   $('caAcct').innerHTML=`<option value="">${diff>0?'보낸':'받은'} 계좌 선택</option>`+pfList().filter(([id])=>id!==cur).map(([id,p])=>`<option value="${esc(id)}">${esc(p.name||id)}</option>`).join('');
@@ -985,7 +988,7 @@ $('caBtns').addEventListener('click',async e=>{
   const other=$('caAcct').value, entry={date:d,amount:diff,type:ca==='out'?'new':ca,cat:catOf(cur)};
   if(ca==='xfer'){ if(diff>0) entry.from=other; else entry.to=other }
   const doc={...draft,deposits:[...(draft.deposits||[]),entry].slice(-500),updatedAt:new Date().toISOString()};
-  const label={new:'저축으로',out:'출금으로',div:'배당·이자로',xfer:'계좌 간 이동으로',adj:'오차 정리로'}[ca];
+  const label={new:'저축으로',once:'일회성 입금으로',out:'출금으로',div:'배당·이자로',xfer:'계좌 간 이동으로',adj:'오차 정리로'}[ca];
   $('cashAsk').hidden=true;
   const ok=await rbWrite(doc,`예수금 변경을 ${label} 기록하고 저장했습니다.`); if(!ok) return;
   draft=doc;
@@ -1003,6 +1006,7 @@ $('rbDeposit').addEventListener('click',async()=>{
   ORD={}; $('rb-dep').value=''; $('rb-cash').value=draft.cash; rbCalc();
   const ok=await rbWrite({...draft,updatedAt:new Date().toISOString()},
     type==='new'? `${wonF(v)}을 예수금에 넣었습니다(저축으로 기록). 종목별 주문 안내를 확인하세요.`
+    : type==='once'? `일회성 입금 ${wonF(v)}을 예수금에 넣었습니다(투자 수익과 저축 속도에서 모두 제외).`
     : type==='div'? `배당금·이자 ${wonF(v)}을 예수금에 넣었습니다(투자 수익으로 기록, 저축에는 넣지 않음).`
     : `${PF[from]?.name||from}에서 ${wonF(v)}을 옮겼습니다(저축으로 세지 않음).`);
   if(!ok){ draft.cash=before; draft.deposits=draft.deposits.slice(0,-1); $('rb-cash').value=draft.cash; rbCalc(); return }
@@ -1017,7 +1021,7 @@ function rbDepRender(){
   if(!draft) return;
   $('rb-depFrom').innerHTML='<option value="">보낸 계좌 선택</option>'+pfList().filter(([id])=>id!==cur).map(([id,p])=>`<option value="${esc(id)}">${esc(p.name||id)}</option>`).join('');
   const last=(draft.deposits||[]).slice(-5).reverse();
-  $('rbDepLog').textContent= last.length? '최근 입금: '+last.map(x=>`${x.date.slice(5).replace('-','/')} ${x.amount<0?'−':'+'}${won(Math.abs(x.amount)/1e4)}${x.type==='div'?' (배당·이자)':x.type==='adj'?' (오차 정리)':x.type==='new'&&n(x.amount)<0?' (출금)':x.type==='xfer'?(x.from?` (${PF[x.from]?.name||x.from}에서 이동)`:` (${PF[x.to]?.name||x.to}로 이동)`):''}`).join(' · ') : '아직 이 화면에서 입금한 기록이 없습니다. 새로 들어온 돈은 저축 속도에, 배당금·이자는 투자 수익에 반영됩니다.';
+  $('rbDepLog').textContent= last.length? '최근 입금: '+last.map(x=>`${x.date.slice(5).replace('-','/')} ${x.amount<0?'−':'+'}${won(Math.abs(x.amount)/1e4)}${x.type==='div'?' (배당·이자)':x.type==='once'?' (일회성)':x.type==='adj'?' (오차 정리)':x.type==='new'&&n(x.amount)<0?' (출금)':x.type==='xfer'?(x.from?` (${PF[x.from]?.name||x.from}에서 이동)`:` (${PF[x.to]?.name||x.to}로 이동)`):''}`).join(' · ') : '아직 이 화면에서 입금한 기록이 없습니다. 새로 들어온 돈은 저축 속도에, 배당금·이자는 투자 수익에 반영됩니다.';
 }
 $('rbReset').addEventListener('click',()=>{ORD={}; rbCalc(); msg($('rbMsg'),'추천 주문으로 되돌렸습니다.')});
 // 주문 반영: idxs 에 있는 종목만 처리. 반영하지 않은 종목의 주문은 그대로 유지
@@ -1378,12 +1382,12 @@ $('fillFromAcct').addEventListener('click',()=>{
   const m=$('f-month').value, a=autoRecord(m);
   if(!a) return msg($('formMsg'),'그 달은 일별 평가액이 없어 자동으로 계산할 수 없습니다.',true);
   ACC.forEach(([k])=>$('f-bal-'+k).value=Math.round(n(a.bal[k]))); updTotal();
-  $('f-add-pension').value=Math.round(a.add.pension); $('f-add-dc').value=Math.round(a.add.dc); $('f-add-other').value=Math.round(a.add.other);
+  $('f-add-pension').value=Math.round(a.add.pension); $('f-add-dc').value=Math.round(a.add.dc); $('f-add-other').value=Math.round(a.add.other); $('f-add-once').value=Math.round(a.add.once||0);
   msg($('formMsg'),'자동 계산값으로 채웠습니다. 고칠 칸만 바꾸고 저장하세요.');
 });
 
 /* ---------- 기록 탭: 입금 · 매매 기록 고치기 ---------- */
-const depType=d=> d.type==='div'?'배당·이자' : d.type==='adj'?'오차 정리' : d.type==='xfer'?(d.amount<0?`${esc(PF[d.to]?.name||d.to||'')}(으)로 이동`:`${esc(PF[d.from]?.name||d.from||'')}에서 이동`) : n(d.amount)<0?'출금':'저축';
+const depType=d=> d.type==='div'?'배당·이자' : d.type==='once'?'일회성 입금' : d.type==='adj'?'오차 정리' : d.type==='xfer'?(d.amount<0?`${esc(PF[d.to]?.name||d.to||'')}(으)로 이동`:`${esc(PF[d.from]?.name||d.from||'')}에서 이동`) : n(d.amount)<0?'출금':'저축';
 function allDeposits(){ const out=[]; for(const [id,p] of Object.entries(PF)) (p.deposits||[]).forEach((d,i)=>out.push({...d,acct:id,idx:i}));
   return out.sort((a,b)=>a.date<b.date?1:a.date>b.date?-1:b.idx-a.idx) }
 function allTrades(){ const out=[]; for(const [id,p] of Object.entries(PF)) (p.trades||[]).forEach((t,i)=>out.push({...t,acct:id,idx:i}));
@@ -1409,7 +1413,7 @@ $('depList').addEventListener('click',async e=>{
   if(e.target.closest('[data-dedit]')){
     row.innerHTML=`<div class="lg-ed">
       <label>날짜<input type="date" data-k="date" value="${esc(d.date)}"></label>
-      <label>종류<select data-k="type"><option value="new" ${d.type==='new'?'selected':''}>저축 / 출금</option><option value="div" ${d.type==='div'?'selected':''}>배당·이자</option><option value="adj" ${d.type==='adj'?'selected':''}>오차 정리</option></select></label>
+      <label>종류<select data-k="type"><option value="new" ${d.type==='new'?'selected':''}>저축 / 출금</option><option value="once" ${d.type==='once'?'selected':''}>일회성 입금</option><option value="div" ${d.type==='div'?'selected':''}>배당·이자</option><option value="adj" ${d.type==='adj'?'selected':''}>오차 정리</option></select></label>
       <label class="full" style="grid-column:1/-1">금액 (원, 출금은 −)<input type="number" inputmode="numeric" step="any" data-k="amount" value="${n(d.amount)}"></label></div>
       <div class="lg-a"><button class="btn ghost sm" type="button" data-dcancel>취소</button><button class="btn sm" type="button" data-dsave>저장</button></div>`;
     return;
