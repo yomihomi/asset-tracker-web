@@ -106,6 +106,22 @@ nav.tabs button[aria-current="page"]{color:var(--accent);font-weight:700;backgro
 .ord .oa-row{grid-column:1/-1;display:flex;justify-content:space-between;align-items:center;gap:8px}
 .ord .oa{font-size:13.5px;font-weight:600}
 .btn.sm{padding:7px 12px;font-size:13.5px;flex:none}
+.tag{display:inline-block;font-size:11px;font-weight:600;padding:1px 6px;border-radius:99px;background:var(--accent-soft);color:var(--accent);margin-left:4px;vertical-align:1px}
+.tag.edit{background:var(--warn-soft);color:var(--warn)}
+.lgs{display:flex;flex-direction:column}
+.lg{display:flex;flex-direction:column;gap:6px;padding:10px 0;border-bottom:1px solid var(--line)}
+.lg:last-child{border-bottom:0}
+.lg-h{display:flex;flex-wrap:wrap;gap:4px 8px;align-items:baseline}
+.lg-h .d{font-family:var(--font-num);color:var(--muted);font-size:13px}
+.lg-h .amt{margin-left:auto;font-weight:600}
+.lg-sub{font-size:13px;color:var(--muted)}
+.lg-a{display:flex;gap:8px;justify-content:flex-end}
+.lg-ed{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.lg-ed input,.lg-ed select{padding:7px 8px;font-size:14px}
+.ask{border:1px solid var(--warn);background:var(--warn-soft);border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:10px}
+.ask p{margin:0;font-weight:600;color:var(--ink)}
+.ask-btns{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.ask-btns .btn{padding:10px 8px;font-size:14px;background:var(--surface)}
 label.chk{flex-direction:row;align-items:center;gap:8px;color:var(--ink)}
 label.chk input{width:auto;accent-color:var(--accent)}
 .lock-tag{font-size:11.5px;color:var(--muted);font-weight:600}
@@ -301,10 +317,19 @@ input:disabled{opacity:.75}
     </div>
   </section>
 
-  <!-- 입력 -->
+  <!-- 기록 (잘못 들어간 기록 고치기) -->
   <section id="tab-input" hidden style="display:flex;flex-direction:column;gap:14px">
     <div class="card">
-      <h2>월말 잔고 입력 (만원)</h2>
+      <h2>월별 기록</h2>
+      <p class="note">저장된 달은 그대로 쓰고, 그 밖의 달은 매일 평가액과 리밸런싱 입금으로 <b>자동 계산</b>합니다. 행을 누르면 그 달 값을 고칠 수 있습니다.</p>
+      <div class="table-wrap"><table>
+        <thead><tr><th>월</th><th>금융자산</th><th>적립</th><th>손익</th><th>수익률</th></tr></thead>
+        <tbody id="histBody"><tr><td colspan="5" class="empty">기록을 불러오는 중입니다.</td></tr></tbody>
+      </table></div>
+    </div>
+
+    <div class="card" id="recCard" hidden>
+      <h2 id="recTitle">월 기록 고치기 (만원)</h2>
       <form id="recForm" novalidate>
         <fieldset>
           <legend>기준 월</legend>
@@ -312,30 +337,38 @@ input:disabled{opacity:.75}
         </fieldset>
         <fieldset id="balFields"><legend>계좌별 평가금액</legend></fieldset>
         <fieldset>
-          <legend>이번 달 새로 넣은 돈 (계좌 간 이동 제외)</legend>
+          <legend>그달 새로 넣은 돈 (계좌 간 이동·배당 제외)</legend>
           <label>연금저축+IRP<input type="number" inputmode="decimal" id="f-add-pension" step="any"></label>
           <label>DC 입금<input type="number" inputmode="decimal" id="f-add-dc" step="any"></label>
           <label class="full">기타 추가 적립 (ISA·일반·예금)<input type="number" inputmode="decimal" id="f-add-other" step="any"></label>
-          <label class="full">메모<input type="text" id="f-note" maxlength="120" placeholder="예: SKT 매도, 리밸런싱"></label>
+          <label class="full">메모<input type="text" id="f-note" maxlength="120" placeholder="예: 엑셀 값과 맞춤"></label>
         </fieldset>
         <p class="note" id="formTotal">합계 –</p>
-        <button class="btn ghost" type="button" id="fillFromAcct">현재 계좌 평가액으로 채우기</button>
+        <button class="btn ghost" type="button" id="fillFromAcct">자동 계산값으로 채우기</button>
         <div class="row">
           <button class="btn" type="submit" id="saveBtn">저장</button>
+          <button class="btn ghost" type="button" id="recClose">닫기</button>
         </div>
         <p class="toast" id="formMsg" role="status"></p>
       </form>
-    </div>
-    <div class="card">
-      <h2>기록 (행을 누르면 수정)</h2>
-      <div class="table-wrap"><table>
-        <thead><tr><th>월</th><th>금융자산</th><th>적립</th><th>손익</th><th>수익률</th></tr></thead>
-        <tbody id="histBody"><tr><td colspan="5" class="empty">아직 기록이 없습니다. 위 양식에 이번 달 잔고를 입력하세요.</td></tr></tbody>
-      </table></div>
       <div class="row" id="delRow" hidden>
         <span class="note" id="delLabel" style="flex:2"></span>
         <button class="btn danger" type="button" id="delBtn">삭제</button>
       </div>
+    </div>
+
+    <div class="card">
+      <h2>입금 기록</h2>
+      <p class="note">금액·종류·날짜를 고치거나 삭제하면 그 계좌의 예수금도 차이만큼 함께 바뀝니다. 계좌 간 이동은 양쪽 계좌가 함께 되돌려집니다.</p>
+      <div id="depList" class="lgs"></div>
+      <p class="toast" id="depMsg" role="status"></p>
+    </div>
+
+    <div class="card">
+      <h2>매매 기록</h2>
+      <p class="note">되돌리면 그 매매로 바뀐 보유 수량과 예수금이 원래대로 돌아갑니다. 다시 하려면 리밸런싱 탭에서 체결 반영하세요.</p>
+      <div id="tradeList" class="lgs"></div>
+      <p class="toast" id="trMsg" role="status"></p>
     </div>
   </section>
 
@@ -409,6 +442,12 @@ input:disabled{opacity:.75}
         <button class="btn ghost" type="button" id="rbApply">남은 주문 모두 반영</button>
       </div>
       <p class="toast" id="rbMsg" role="status"></p>
+      <div class="ask" id="cashAsk" hidden>
+        <p id="caText"></p>
+        <div class="ask-btns" id="caBtns"></div>
+        <select id="caAcct" aria-label="상대 계좌" hidden></select>
+        <button class="btn ghost sm" type="button" id="caCancel">취소</button>
+      </div>
       <p class="note">체결된 종목은 그 종목의 '체결 반영'을 누르세요. 일부만 체결됐으면 수량을 체결된 만큼으로 고친 뒤 누릅니다. '남은 주문 모두 반영'은 적힌 주문 전부를 한꺼번에 처리합니다. 반영할 때는 주문(매수·매도, 수량, 체결가) 그대로 보유 수량을 바꾸고, 예수금에서 매수 금액을 빼고 매도 금액을 더해 저장합니다. 실제 체결 내역에 맞게 고친 뒤 누르세요. 수수료·세금으로 생긴 몇 원 차이는 예수금 칸을 고치고 '변경 저장'을 누르면 됩니다.</p>
       <fieldset>
         <legend>계좌 설정</legend>
@@ -473,7 +512,7 @@ input:disabled{opacity:.75}
   <div class="in">
     <button type="button" id="t-home" data-tab="home" aria-current="page">현황</button>
     <button type="button" id="t-asset" data-tab="asset">자산</button>
-    <button type="button" id="t-input" data-tab="input">입력</button>
+    <button type="button" id="t-input" data-tab="input">기록</button>
     <button type="button" id="t-rebal" data-tab="rebal">리밸런싱</button>
     <button type="button" id="t-set" data-tab="set">설정</button>
   </div>
@@ -498,10 +537,34 @@ function pct(x,d=1){return (x*100).toFixed(d)+'%'}
 const ym=s=>{const [y,m]=s.split('-').map(Number);return y*12+(m-1)};
 
 /* ---------- 계산 ---------- */
-function total(r){return ACC.reduce((a,[k])=>a+n(r.bal?.[k]),0)}
+function total(r){return Object.values(r.bal||{}).reduce((a,v)=>a+n(v),0)}
+// 자동 월 기록: 투자 계좌는 그달 마지막 일별 평가액, 예금 등(추이 제외 계좌)은 지금 잔액에서 이후 입출금을 되돌림. 이번 달은 지금 평가액
+function autoRecord(m){
+  if(!STATE) return null;
+  const now=todayStr().slice(0,7), ports=Object.entries(STATE.portfolios||{}), bal={};
+  let dr=null;
+  if(m!==now){ dr=(DAILY?.records||[]).filter(r=>r.date.slice(0,7)===m).at(-1); if(!dr) return null }
+  for(const [id,p] of ports){
+    if(m===now) bal[id]=acctValue(p)/1e4;
+    else if(p.track!==false) bal[id]=n(dr.accounts?.[id])/1e4;
+    else { let v=acctValue(p);
+      for(const d of p.deposits||[]) if(String(d.date).slice(0,7)>m) v-=n(d.amount);
+      for(const t of p.trades||[]) if(String(t.date).slice(0,7)>m) v-=n(t.sell)-n(t.buy);
+      bal[id]=v/1e4 }
+  }
+  const dm=depMonthly().by[m]||{pension:0,dc:0,other:0};
+  return {month:m,bal,add:{pension:dm.pension,dc:dm.dc,other:dm.other},note:'',_auto:true};
+}
+function mergedRecs(){
+  const saved=[...RECS].sort((a,b)=>a.month<b.month?-1:1);
+  if(!saved.length||typeof STATE==='undefined'||!STATE) return saved;
+  const have=new Set(saved.map(r=>r.month)), out=[...saved], now=todayStr().slice(0,7);
+  for(let m=nextYm(saved[0].month); m<=now; m=nextYm(m)) if(!have.has(m)){ const a=autoRecord(m); if(a) out.push(a) }
+  return out.sort((a,b)=>a.month<b.month?-1:1);
+}
 function addOf(r){return n(r.add?.pension)+n(r.add?.dc)+n(r.add?.other)}
 function derive(){
-  const recs=[...RECS].sort((a,b)=>a.month<b.month?-1:1);
+  const recs=mergedRecs();
   if(!recs.length) return null;
   const last=recs[recs.length-1];
   const ageM=ym(last.month)+1-(S.birthYear*12+(S.birthMonth-1)); // 월말 기준
@@ -519,7 +582,7 @@ function derive(){
   // 저축 속도: 입력한 기록(첫 기록 제외)의 최근 N개월 실제 입금 평균
   // DC는 1년에 한 번 들어오므로 기록이 12개월 이상일 때만 실제값(최근 12개월 ÷ 12), 그 전에는 설정값(연 금액 ÷ 12)
   // 입력 탭 기록 + 리밸런싱 탭 입금 기록(아직 월말 기록이 없는 달 포함)
-  const dep=depMonthly(), recAdd={}; recs.slice(1).forEach(r=>recAdd[r.month]=r.add||{});
+  const dep=depMonthly(), recAdd={}; recs.slice(1).forEach(r=>{ if(!r._auto) recAdd[r.month]=r.add||{} });  // 자동 기록 달은 아래 입금 기록으로 판단
   const months=new Set(Object.keys(recAdd));
   if(dep.start){ const now=todayStr().slice(0,7); for(let m=dep.start; m<=now; m=nextYm(m)){ if(m===now&&!dep.by[m]) continue; months.add(m) } }
   // 같은 달에 입력 탭 기록과 리밸런싱 입금이 둘 다 있으면 항목별로 큰 값 (중복 없이, 빠짐 없이)
@@ -619,7 +682,7 @@ function render(){
   else if(E<=tM){chip.className='chip good';chip.textContent=`목표 ${S.targetAge}세보다 ${ageTxt(tM-E).replace('세','년')} 빠름`; if(E===tM) chip.textContent=`목표 ${S.targetAge}세 달성 가능`}
   else{const gap=E-tM; chip.className=gap>36?'chip bad':'chip warn'; chip.textContent=`목표 ${S.targetAge}세보다 ${ageTxt(gap).replace('세','년')} 늦음`}
   $('kvPace').textContent=`월 ${won(curSave)}`;
-  $('kvPaceSub').textContent=`연금 ${won(d.pensionAvg)} + DC ${won(d.dcM)}${d.dcReal?'':'(설정값)'} + 기타 ${won(d.otherAvg)} · 최근 ${d.paceN}개월${d.paceDep?` (리밸런싱 입금이 있는 달 ${d.paceDep}개월 포함)`:' (입력 탭 기록)'}`;
+  $('kvPaceSub').textContent=`연금 ${won(d.pensionAvg)} + DC ${won(d.dcM)}${d.dcReal?'':'(설정값)'} + 기타 ${won(d.otherAvg)} · 최근 ${d.paceN}개월${d.paceDep?` (리밸런싱 입금이 있는 달 ${d.paceDep}개월 포함)`:' (월별 기록)'}`;
   $('kvFixed').textContent=EF===null?'75세 이후':ageTxt(EF);
   $('kvRate').textContent=`${pct(r.pre)} / ${pct(r.post)}`;
   // 목표 갭
@@ -653,8 +716,9 @@ function render(){
 }
 function renderHistory(d){
   const tb=$('histBody');
-  if(!d){tb.innerHTML='<tr><td colspan="5" class="empty">아직 기록이 없습니다. 위 양식에 이번 달 잔고를 입력하세요.</td></tr>';return}
-  tb.innerHTML=[...d.rows].reverse().map(x=>`<tr class="clickable" data-m="${x.r.month}" tabindex="0"><td>${x.r.month.replace('-','.')}${x.r.note?' ·':''}</td><td class="num">${won(x.V1)}</td><td class="num">${x.C===null?'–':won(x.C)}</td><td class="num ${x.gain>0?'pos':x.gain<0?'neg':''}">${x.gain===null?'–':won(x.gain)}</td><td class="num ${x.ret>0?'pos':x.ret<0?'neg':''}">${x.ret===null?'기준':pct(x.ret)}</td></tr>`).join('');
+  if(!d){tb.innerHTML='<tr><td colspan="5" class="empty">아직 기록이 없습니다.</td></tr>';return}
+  const now=todayStr().slice(0,7);
+  tb.innerHTML=[...d.rows].reverse().map(x=>`<tr class="clickable" data-m="${x.r.month}" tabindex="0"><td>${x.r.month.replace('-','.')}${x.r._auto?`<span class="tag">${x.r.month===now?'진행 중':'자동'}</span>`:x.r.note?' ·':''}</td><td class="num">${won(x.V1)}</td><td class="num">${x.C===null?'–':won(x.C)}</td><td class="num ${x.gain>0?'pos':x.gain<0?'neg':''}">${x.gain===null?'–':won(x.gain)}</td><td class="num ${x.ret>0?'pos':x.ret<0?'neg':''}">${x.ret===null?'기준':pct(x.ret)}</td></tr>`).join('');
 }
 
 /* ---------- 입력 폼 ---------- */
@@ -667,10 +731,11 @@ function fillForm(rec,asNew){
   $('f-add-dc').value= asNew? 0 : (rec?.add?.dc??'');
   $('f-add-other').value= asNew? 0 : (rec?.add?.other??'');
   $('f-note').value= asNew? '' : (rec?.note||'');
-  editing= asNew? null : rec?.month||null;
-  $('delRow').hidden=!editing; $('delLabel').textContent= editing? `${editing.replace('-','년 ')}월 기록 수정 중`:'';
+  editing= asNew||rec?._auto? null : rec?.month||null;
+  $('delRow').hidden=!editing; $('delLabel').textContent= editing? `저장된 ${editing.replace('-','년 ')}월 기록입니다. 삭제하면 자동 계산값으로 돌아갑니다.`:'';
+  $('recTitle').textContent= rec? `${(rec.month||'').replace('-','년 ')}월 기록 고치기 (만원) · ${rec._auto?'지금은 자동 계산값':'저장된 기록'}` : '월 기록 고치기 (만원)';
   $('delBtn').textContent='삭제'; $('delBtn').dataset.armed='';
-  updTotal(); $('saveBtn').textContent= editing?'수정 저장':'저장';
+  updTotal(); $('saveBtn').textContent= editing?'수정 저장':'이 값으로 저장';
 }
 function updTotal(){const t=ACC.reduce((a,[k])=>a+n($('f-bal-'+k).value),0);$('formTotal').textContent=`합계 ${won(t)}`}
 $('recForm').addEventListener('input',updTotal);
@@ -680,21 +745,26 @@ $('recForm').addEventListener('submit',async e=>{
   e.preventDefault(); const m=$('f-month').value;
   if(!/^\d{4}-\d{2}$/.test(m)) return msg($('formMsg'),'기준 월을 선택하세요.',true);
   const rec={month:m,bal:{},add:{pension:n($('f-add-pension').value),dc:n($('f-add-dc').value),other:n($('f-add-other').value)},note:$('f-note').value.trim()};
+  const base=RECS.find(r=>r.month===m)||mergedRecs().find(r=>r.month===m); if(base) Object.assign(rec.bal,Object.fromEntries(Object.entries(base.bal||{}).map(([k,v])=>[k,Math.round(n(v))])));
   ACC.forEach(([k])=>rec.bal[k]=n($('f-bal-'+k).value));
   if(total(rec)<=0) return msg($('formMsg'),'계좌 잔고를 하나 이상 입력하세요.',true);
   if(!DB) return msg($('formMsg'),'저장소에 연결되지 않아 저장할 수 없습니다. 페이지를 다시 열어 주세요.',true);
   $('saveBtn').disabled=true;
   try{ await DB.doc('records/'+m).set(rec); if(editing&&editing!==m) await DB.doc('records/'+editing).delete();
-    msg($('formMsg'),`${m.replace('-','년 ')}월 기록을 저장했습니다.`); fillForm(rec,false);
+    msg($('formMsg'),`${m.replace('-','년 ')}월 기록을 저장했습니다. 이 달은 이제 자동 계산 대신 저장한 값을 씁니다.`); fillForm(rec,false);
   }catch(err){ msg($('formMsg'), saveErr(err), true) }
   finally{$('saveBtn').disabled=false}
 });
-$('histBody').addEventListener('click',e=>{const tr=e.target.closest('tr[data-m]'); if(!tr) return; const rec=RECS.find(r=>r.month===tr.dataset.m); fillForm(rec,false); $('recForm').scrollIntoView({behavior:'smooth',block:'start'})});
+$('histBody').addEventListener('click',e=>{const tr=e.target.closest('tr[data-m]'); if(!tr) return; const m=tr.dataset.m;
+  const rec=RECS.find(r=>r.month===m)||mergedRecs().find(r=>r.month===m); if(!rec) return;
+  const show={...rec,bal:Object.fromEntries(Object.entries(rec.bal||{}).map(([k,v])=>[k,Math.round(n(v))])),add:Object.fromEntries(Object.entries(rec.add||{}).map(([k,v])=>[k,Math.round(n(v))]))};
+  fillForm(show,false); $('recCard').hidden=false; msg($('formMsg'),''); $('recCard').scrollIntoView({behavior:'smooth',block:'start'})});
+$('recClose').addEventListener('click',()=>{ $('recCard').hidden=true });
 $('histBody').addEventListener('keydown',e=>{if(e.key==='Enter') e.target.click()});
 $('delBtn').addEventListener('click',async()=>{
   const b=$('delBtn'); if(!editing) return;
   if(!b.dataset.armed){b.dataset.armed='1';b.textContent='한 번 더 누르면 삭제';return}
-  try{await DB.doc('records/'+editing).delete(); msg($('formMsg'),`${editing.replace('-','년 ')}월 기록을 삭제했습니다.`); fillForm(null,true)}
+  try{const m=editing; await DB.doc('records/'+m).delete(); fillForm(null,true); $('recCard').hidden=true; msg($('depMsg'),''); }
   catch(e){msg($('formMsg'),saveErr(e,'삭제하지 못했습니다.'),true)}
 });
 
@@ -876,7 +946,37 @@ async function rbWrite(doc,okText){
   try{ await DB.doc('portfolios/'+cur).set(doc); dirty=false; msg($('rbMsg'),okText); return true }
   catch(err){ msg($('rbMsg'), saveErr(err), true); return false }
 }
-$('rbSave').addEventListener('click',()=>{ if(draft) rbWrite({...draft,updatedAt:new Date().toISOString()},'변경을 저장했습니다.') });
+$('rbSave').addEventListener('click',()=>{
+  if(!draft) return;
+  const diff=Math.round(n(draft.cash)-n(PF[cur]?.cash));
+  if(PF[cur]&&diff!==0) return showCashAsk(diff);
+  rbWrite({...draft,updatedAt:new Date().toISOString()},'변경을 저장했습니다.');
+});
+let caDiff=0;
+function showCashAsk(diff){
+  caDiff=diff; $('cashAsk').hidden=false;
+  $('caText').textContent=`예수금이 ${diff>0?'+':'−'}${wonF(Math.abs(diff))} 바뀌었습니다. 어떤 돈인가요?`;
+  const opts= diff>0? [['new','새로 들어온 돈'],['div','배당금·이자'],['xfer','다른 계좌에서 옮긴 돈'],['adj','수수료·오차 정리']]
+                    : [['out','출금 (생활비 등)'],['xfer','다른 계좌로 옮긴 돈'],['adj','수수료·오차 정리']];
+  $('caBtns').innerHTML=opts.map(([v,t])=>`<button class="btn ghost" type="button" data-ca="${v}">${t}</button>`).join('');
+  $('caAcct').innerHTML=`<option value="">${diff>0?'보낸':'받은'} 계좌 선택</option>`+pfList().filter(([id])=>id!==cur).map(([id,p])=>`<option value="${esc(id)}">${esc(p.name||id)}</option>`).join('');
+  $('caAcct').hidden=true; $('cashAsk').scrollIntoView({block:'center',behavior:'smooth'});
+}
+$('caCancel').addEventListener('click',()=>{ $('cashAsk').hidden=true });
+$('caBtns').addEventListener('click',async e=>{
+  const b=e.target.closest('[data-ca]'); if(!b||!draft) return; const ca=b.dataset.ca, diff=caDiff, d=todayStr();
+  if(ca==='xfer'&&!$('caAcct').value){ $('caAcct').hidden=false; return msg($('rbMsg'),`${diff>0?'보낸':'받은'} 계좌를 고른 뒤 다시 누르세요.`,true) }
+  const other=$('caAcct').value, entry={date:d,amount:diff,type:ca==='out'?'new':ca,cat:catOf(cur)};
+  if(ca==='xfer'){ if(diff>0) entry.from=other; else entry.to=other }
+  const doc={...draft,deposits:[...(draft.deposits||[]),entry].slice(-500),updatedAt:new Date().toISOString()};
+  const label={new:'저축으로',out:'출금으로',div:'배당·이자로',xfer:'계좌 간 이동으로',adj:'오차 정리로'}[ca];
+  $('cashAsk').hidden=true;
+  const ok=await rbWrite(doc,`예수금 변경을 ${label} 기록하고 저장했습니다.`); if(!ok) return;
+  draft=doc;
+  if(ca==='xfer'&&PF[other]){ const q=clone(PF[other]); q.cash=n(q.cash)-diff;
+    q.deposits=[...(q.deposits||[]),{date:d,amount:-diff,type:'xfer',...(diff>0?{to:cur}:{from:cur})}].slice(-500);
+    try{ await putPF(other,q) }catch(err){ msg($('rbMsg'),`상대 계좌(${q.name||other}) 예수금을 바꾸지 못했습니다. 그 계좌에서 직접 고치세요.`,true) } }
+});
 $('rbDeposit').addEventListener('click',async()=>{
   if(!draft) return; const v=Math.round(n($('rb-dep').value)), type=$('rb-depType').value, from=$('rb-depFrom').value;
   if(v<=0) return msg($('rbMsg'),'입금액을 입력하세요.',true);
@@ -901,7 +1001,7 @@ function rbDepRender(){
   if(!draft) return;
   $('rb-depFrom').innerHTML='<option value="">보낸 계좌 선택</option>'+pfList().filter(([id])=>id!==cur).map(([id,p])=>`<option value="${esc(id)}">${esc(p.name||id)}</option>`).join('');
   const last=(draft.deposits||[]).slice(-5).reverse();
-  $('rbDepLog').textContent= last.length? '최근 입금: '+last.map(x=>`${x.date.slice(5).replace('-','/')} ${x.amount<0?'−':'+'}${won(Math.abs(x.amount)/1e4)}${x.type==='div'?' (배당·이자)':x.type==='xfer'?(x.from?` (${PF[x.from]?.name||x.from}에서 이동)`:` (${PF[x.to]?.name||x.to}로 이동)`):''}`).join(' · ') : '아직 이 화면에서 입금한 기록이 없습니다. 새로 들어온 돈은 저축 속도에, 배당금·이자는 투자 수익에 반영됩니다.';
+  $('rbDepLog').textContent= last.length? '최근 입금: '+last.map(x=>`${x.date.slice(5).replace('-','/')} ${x.amount<0?'−':'+'}${won(Math.abs(x.amount)/1e4)}${x.type==='div'?' (배당·이자)':x.type==='adj'?' (오차 정리)':x.type==='new'&&n(x.amount)<0?' (출금)':x.type==='xfer'?(x.from?` (${PF[x.from]?.name||x.from}에서 이동)`:` (${PF[x.to]?.name||x.to}로 이동)`):''}`).join(' · ') : '아직 이 화면에서 입금한 기록이 없습니다. 새로 들어온 돈은 저축 속도에, 배당금·이자는 투자 수익에 반영됩니다.';
 }
 $('rbReset').addEventListener('click',()=>{ORD={}; rbCalc(); msg($('rbMsg'),'추천 주문으로 되돌렸습니다.')});
 // 주문 반영: idxs 에 있는 종목만 처리. 반영하지 않은 종목의 주문은 그대로 유지
@@ -1259,12 +1359,81 @@ $('asRefresh').addEventListener('click',async()=>{
   }catch(e){ msg($('asMsg'), e.code==='no_write'?'이 기기에는 쓰기 토큰이 없어 요청할 수 없습니다.':ghErrText(e),true) }
 });
 $('fillFromAcct').addEventListener('click',()=>{
-  if(!STATE) return;
-  ACC.forEach(([k])=>{const p=STATE.portfolios?.[k]; if(p) $('f-bal-'+k).value=Math.round(acctValue(p)/1e4)}); updTotal();
-  const dep=depMonthly(), m=$('f-month').value, dm=dep.by[m]||null, rec=RECS.find(r=>r.month===m);
-  if(rec){ $('f-add-pension').value=n(rec.add?.pension); $('f-add-dc').value=n(rec.add?.dc); $('f-add-other').value=n(rec.add?.other) }  // 이미 저장한 그달 기록이 있으면 그 값에서 시작
-  if(dm){ [['pension','f-add-pension'],['dc','f-add-dc'],['other','f-add-other']].forEach(([k,id])=>{ $(id).value=Math.round(Math.max(n($(id).value),dm[k])) }) }
-  msg($('formMsg'), dm? '계좌 평가액과 이번 달 리밸런싱 입금 내역(만원)으로 채웠습니다. 확인한 뒤 저장하세요.' : '계좌 평가액(만원)으로 채웠습니다. 새로 넣은 돈을 확인한 뒤 저장하세요.');
+  const m=$('f-month').value, a=autoRecord(m);
+  if(!a) return msg($('formMsg'),'그 달은 일별 평가액이 없어 자동으로 계산할 수 없습니다.',true);
+  ACC.forEach(([k])=>$('f-bal-'+k).value=Math.round(n(a.bal[k]))); updTotal();
+  $('f-add-pension').value=Math.round(a.add.pension); $('f-add-dc').value=Math.round(a.add.dc); $('f-add-other').value=Math.round(a.add.other);
+  msg($('formMsg'),'자동 계산값으로 채웠습니다. 고칠 칸만 바꾸고 저장하세요.');
+});
+
+/* ---------- 기록 탭: 입금 · 매매 기록 고치기 ---------- */
+const depType=d=> d.type==='div'?'배당·이자' : d.type==='adj'?'오차 정리' : d.type==='xfer'?(d.amount<0?`${esc(PF[d.to]?.name||d.to||'')}(으)로 이동`:`${esc(PF[d.from]?.name||d.from||'')}에서 이동`) : n(d.amount)<0?'출금':'저축';
+function allDeposits(){ const out=[]; for(const [id,p] of Object.entries(PF)) (p.deposits||[]).forEach((d,i)=>out.push({...d,acct:id,idx:i}));
+  return out.sort((a,b)=>a.date<b.date?1:a.date>b.date?-1:b.idx-a.idx) }
+function allTrades(){ const out=[]; for(const [id,p] of Object.entries(PF)) (p.trades||[]).forEach((t,i)=>out.push({...t,acct:id,idx:i}));
+  return out.sort((a,b)=>a.date<b.date?1:a.date>b.date?-1:b.idx-a.idx) }
+function renderLogs(){
+  const D=allDeposits().slice(0,80);
+  $('depList').innerHTML= D.length? D.map(d=>`<div class="lg" data-acct="${esc(d.acct)}" data-idx="${d.idx}">
+      <div class="lg-h"><span class="d">${esc(d.date)}</span><b>${esc(PF[d.acct]?.name||d.acct)}</b><span class="tag ${d.type==='new'?'':'edit'}">${depType(d)}</span><span class="num amt ${n(d.amount)<0?'neg':'pos'}">${n(d.amount)<0?'−':'+'}${wonF(Math.abs(n(d.amount)))}</span></div>
+      <div class="lg-a">${d.type==='xfer'?'':'<button class="btn ghost sm" type="button" data-dedit>수정</button>'}<button class="btn danger sm" type="button" data-ddel>${d.type==='xfer'?'이동 되돌리기':'삭제'}</button></div></div>`).join('')
+    : '<p class="empty">아직 입금 기록이 없습니다. 리밸런싱 탭에서 입금하면 여기에 쌓입니다.</p>';
+  const T=allTrades().slice(0,60);
+  $('tradeList').innerHTML= T.length? T.map(t=>`<div class="lg" data-acct="${esc(t.acct)}" data-idx="${t.idx}">
+      <div class="lg-h"><span class="d">${esc(t.date)}</span><b>${esc(PF[t.acct]?.name||t.acct)}</b><span class="num amt">매수 ${wonF(n(t.buy))} · 매도 ${wonF(n(t.sell))}</span></div>
+      <div class="lg-sub">${(t.items||[]).map(x=>`${esc(x.name)} ${x.side==='buy'?'매수':'매도'} ${n(x.q).toLocaleString('ko-KR')}주 @${n(x.p).toLocaleString('ko-KR')}`).join(' · ')}</div>
+      <div class="lg-a"><button class="btn danger sm" type="button" data-tdel>되돌리기</button></div></div>`).join('')
+    : '<p class="empty">아직 매매 기록이 없습니다. 리밸런싱 탭에서 체결 반영하면 여기에 쌓입니다.</p>';
+}
+function busyAcct(acct){ return dirty&&acct===cur }
+async function putPF(id,doc){ await DB.doc('portfolios/'+id).set({...doc,updatedAt:new Date().toISOString()}) }
+$('depList').addEventListener('click',async e=>{
+  const row=e.target.closest('.lg'); if(!row) return; const acct=row.dataset.acct, idx=+row.dataset.idx, p=PF[acct], d=p?.deposits?.[idx]; if(!d) return;
+  if(busyAcct(acct)) return msg($('depMsg'),`리밸런싱 탭의 ${p.name||acct} 계좌에 저장하지 않은 변경이 있습니다. 먼저 저장하거나 버리세요.`,true);
+  if(e.target.closest('[data-dedit]')){
+    row.innerHTML=`<div class="lg-ed">
+      <label>날짜<input type="date" data-k="date" value="${esc(d.date)}"></label>
+      <label>종류<select data-k="type"><option value="new" ${d.type==='new'?'selected':''}>저축 / 출금</option><option value="div" ${d.type==='div'?'selected':''}>배당·이자</option><option value="adj" ${d.type==='adj'?'selected':''}>오차 정리</option></select></label>
+      <label class="full" style="grid-column:1/-1">금액 (원, 출금은 −)<input type="number" inputmode="numeric" step="any" data-k="amount" value="${n(d.amount)}"></label></div>
+      <div class="lg-a"><button class="btn ghost sm" type="button" data-dcancel>취소</button><button class="btn sm" type="button" data-dsave>저장</button></div>`;
+    return;
+  }
+  if(e.target.closest('[data-dcancel]')) return renderLogs();
+  if(e.target.closest('[data-dsave]')){
+    const g=k=>row.querySelector(`[data-k="${k}"]`).value, amt=Math.round(n(g('amount'))), date=g('date');
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||!amt) return msg($('depMsg'),'날짜와 금액을 확인하세요.',true);
+    const doc=clone(p); doc.cash=n(doc.cash)-n(d.amount)+amt; doc.deposits[idx]={...d,date,type:g('type'),amount:amt};
+    try{ await putPF(acct,doc); msg($('depMsg'),`입금 기록을 고쳤습니다. ${p.name||acct} 예수금 ${amt-n(d.amount)>=0?'+':'−'}${wonF(Math.abs(amt-n(d.amount)))}`) }catch(err){ msg($('depMsg'),saveErr(err),true) }
+    return;
+  }
+  const del=e.target.closest('[data-ddel]'); if(!del) return;
+  if(del.dataset.armed!=='1'){ del.dataset.armed='1'; del.textContent='한 번 더 누르면 실행'; return }
+  try{
+    if(d.type==='xfer'){
+      const other=d.amount<0? d.to : d.from, q=PF[other];
+      const j=(q?.deposits||[]).findIndex(x=>x.type==='xfer'&&n(x.amount)===-n(d.amount)&&x.date===d.date&&(x.to===acct||x.from===acct));
+      if(q&&busyAcct(other)) return msg($('depMsg'),`리밸런싱 탭의 ${q.name||other} 계좌에 저장하지 않은 변경이 있습니다. 먼저 저장하세요.`,true);
+      const a=clone(p); a.cash=n(a.cash)-n(d.amount); a.deposits.splice(idx,1); await putPF(acct,a);
+      if(q&&j>=0){ const b=clone(q); b.cash=n(b.cash)-n(q.deposits[j].amount); b.deposits.splice(j,1); await putPF(other,b) }
+      msg($('depMsg'), q&&j>=0? '계좌 간 이동을 양쪽 모두 되돌렸습니다.' : '이 계좌의 이동 기록을 되돌렸습니다. 상대 계좌 기록을 찾지 못해 그쪽 예수금은 직접 확인하세요.', !(q&&j>=0));
+    } else {
+      const a=clone(p); a.cash=n(a.cash)-n(d.amount); a.deposits.splice(idx,1); await putPF(acct,a);
+      msg($('depMsg'),`입금 기록을 삭제했습니다. ${p.name||acct} 예수금 ${n(d.amount)>=0?'−':'+'}${wonF(Math.abs(n(d.amount)))}`);
+    }
+  }catch(err){ msg($('depMsg'),saveErr(err),true) }
+});
+$('tradeList').addEventListener('click',async e=>{
+  const del=e.target.closest('[data-tdel]'); if(!del) return;
+  const row=e.target.closest('.lg'), acct=row.dataset.acct, idx=+row.dataset.idx, p=PF[acct], t=p?.trades?.[idx]; if(!t) return;
+  if(busyAcct(acct)) return msg($('trMsg'),`리밸런싱 탭의 ${p.name||acct} 계좌에 저장하지 않은 변경이 있습니다. 먼저 저장하거나 버리세요.`,true);
+  const a=clone(p), miss=[], neg=[];
+  for(const x of t.items||[]){ const it=a.items.find(y=>(x.code&&y.code===x.code)||y.name===x.name); if(!it){miss.push(x.name);continue}
+    it.qty=n(it.qty)+(x.side==='buy'?-n(x.q):n(x.q)); if(it.qty<0) neg.push(it.name) }
+  if(miss.length) return msg($('trMsg'),`지금 계좌에 없는 종목이 있어 되돌릴 수 없습니다: ${miss.join(', ')}`,true);
+  if(neg.length) return msg($('trMsg'),`되돌리면 보유 수량이 음수가 됩니다: ${neg.join(', ')}. 이후 매매를 먼저 되돌리세요.`,true);
+  if(del.dataset.armed!=='1'){ del.dataset.armed='1'; del.textContent='한 번 더 누르면 되돌림'; return }
+  a.cash=Math.round(n(a.cash)+n(t.buy)-n(t.sell)); a.trades.splice(idx,1);
+  try{ await putPF(acct,a); msg($('trMsg'),`${t.date} 매매를 되돌렸습니다. 보유 수량과 예수금이 원래대로 돌아갔습니다.`) }catch(err){ msg($('trMsg'),saveErr(err),true) }
 });
 
 /* 잠금 · 설정 화면 */
@@ -1285,8 +1454,6 @@ function startApp(){
   DB.doc('settings/main').onSnapshot(s=>{ if(s.exists){S={...DEF,...s.data()}; fillSettings(); render()} });
   DB.collection('records').onSnapshot(q=>{
     RECS=q.docs.map(x=>x.data());
-    if(!editing){const sorted=[...RECS].sort((a,b)=>a.month<b.month?-1:1); const last=sorted[sorted.length-1];
-      if(last){ ACC.forEach(([k])=>{const el=$('f-bal-'+k); if(el.value==='') el.value=last.bal?.[k]??''}); updTotal() } }
     render();
   });
   DB.doc('strategy/main').onSnapshot(s=>{ ST=s.exists?s.data():null; stIdx=clone(ST?.indices||[]); stRenderAll(); if(!dirty&&draft) rbRenderAll() });
@@ -1294,7 +1461,7 @@ function startApp(){
     PF={}; q.docs.forEach(x=>PF[x.id]=x.data());
     if(!cur||!PF[cur]) {cur=pfList()[0]?.[0]||null; dirty=false}
     if(!dirty){draft=cur?clone(PF[cur]):null; rbRenderAll()} else rbSeg();
-    renderAsset(); render();
+    renderAsset(); render(); renderLogs();
   });
   renderAsset();
 }
