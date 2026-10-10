@@ -375,6 +375,11 @@ input:disabled{opacity:.75}
         <input type="number" inputmode="numeric" id="rb-dep" step="any" placeholder="입금액 (원)" aria-label="입금액" style="flex:2;min-width:0">
         <button class="btn ghost" type="button" id="rbDeposit">예수금에 입금</button>
       </div>
+      <div class="row">
+        <select id="rb-depType" aria-label="입금 종류" style="flex:1;min-width:0"><option value="new">새로 들어온 돈 (저축으로 셈)</option><option value="xfer">다른 계좌에서 옮긴 돈</option></select>
+        <select id="rb-depFrom" aria-label="보낸 계좌" style="flex:1;min-width:0" hidden></select>
+      </div>
+      <p class="note" id="rbDepLog"></p>
       <div class="seg" role="group" aria-label="계산 방식">
         <button type="button" id="md-buy" data-md="buy" aria-pressed="true">매수 전용</button>
         <button type="button" id="md-full" data-md="full" aria-pressed="false">전체 리밸런싱</button>
@@ -512,14 +517,20 @@ function derive(){
   const twr= span>0? Math.pow(g,12/span)-1 : null;
   // 저축 속도: 입력한 기록(첫 기록 제외)의 최근 N개월 실제 입금 평균
   // DC는 1년에 한 번 들어오므로 기록이 12개월 이상일 때만 실제값(최근 12개월 ÷ 12), 그 전에는 설정값(연 금액 ÷ 12)
-  const tail=recs.slice(1).slice(-S.paceMonths);
-  const avg=f=>tail.length? tail.reduce((a,r)=>a+n(r.add?.[f]),0)/tail.length : 0;
+  // 리밸런싱 탭 입금 기록이 있는 달부터는 그 기록을, 그 전 달은 입력 탭 기록을 씀
+  const dep=depMonthly(), recAdd={}; recs.slice(1).forEach(r=>recAdd[r.month]=r.add||{});
+  const months=new Set(Object.keys(recAdd));
+  if(dep.start){ const now=todayStr().slice(0,7); for(let m=dep.start; m<=now; m=nextYm(m)){ if(m===now&&!dep.by[m]) continue; months.add(m) } }
+  const val=m=> dep.start&&m>=dep.start ? {src:'dep',pension:0,dc:0,other:0,...(dep.by[m]||{})}
+                                        : {src:'rec',pension:n(recAdd[m]?.pension),dc:n(recAdd[m]?.dc),other:n(recAdd[m]?.other)};
+  const ms=[...months].sort(), tail=ms.slice(-S.paceMonths).map(val);
+  const avg=f=>tail.length? tail.reduce((a,x)=>a+x[f],0)/tail.length : 0;
   const pensionAvg= tail.length? avg('pension') : S.pensionMonthly;
   const otherAvg=avg('other');
-  const dc12=recs.slice(1).slice(-12), dcReal=dc12.length>=12;
-  const dcM= dcReal? dc12.reduce((a,r)=>a+n(r.add?.dc),0)/12 : S.dcAnnual/12;
+  const last12=ms.slice(-12).map(val), dcReal=last12.length>=12;
+  const dcM= dcReal? last12.reduce((a,x)=>a+x.dc,0)/12 : S.dcAnnual/12;
   const fixedM=pensionAvg+dcM;
-  return {recs,last,ageM,A0,twr,span,addSum,gainSum,rows,otherAvg,fixedM,pensionAvg,dcM,dcReal,paceN:tail.length};
+  return {recs,last,ageM,A0,twr,span,addSum,gainSum,rows,otherAvg,fixedM,pensionAvg,dcM,dcReal,paceN:tail.length,paceDep:tail.filter(x=>x.src==='dep').length};
 }
 function rates(d){
   const pre=S.preR/100, post=S.postR/100, del=S.consDelta/100;
@@ -606,7 +617,7 @@ function render(){
   else if(E<=tM){chip.className='chip good';chip.textContent=`목표 ${S.targetAge}세보다 ${ageTxt(tM-E).replace('세','년')} 빠름`; if(E===tM) chip.textContent=`목표 ${S.targetAge}세 달성 가능`}
   else{const gap=E-tM; chip.className=gap>36?'chip bad':'chip warn'; chip.textContent=`목표 ${S.targetAge}세보다 ${ageTxt(gap).replace('세','년')} 늦음`}
   $('kvPace').textContent=`월 ${won(curSave)}`;
-  $('kvPaceSub').textContent=`연금 ${won(d.pensionAvg)} + DC ${won(d.dcM)}${d.dcReal?'':'(설정값)'} + 기타 ${won(d.otherAvg)} · 최근 ${d.paceN}개월 입력 기준`;
+  $('kvPaceSub').textContent=`연금 ${won(d.pensionAvg)} + DC ${won(d.dcM)}${d.dcReal?'':'(설정값)'} + 기타 ${won(d.otherAvg)} · 최근 ${d.paceN}개월${d.paceDep?` (리밸런싱 입금 ${d.paceDep}개월 + 입력 탭 ${d.paceN-d.paceDep}개월)`:' (입력 탭 기록)'}`;
   $('kvFixed').textContent=EF===null?'75세 이후':ageTxt(EF);
   $('kvRate').textContent=`${pct(r.pre)} / ${pct(r.post)}`;
   // 목표 갭
@@ -710,6 +721,18 @@ const wonF=v=>Math.round(v).toLocaleString('ko-KR')+'원';
 const clone=o=>JSON.parse(JSON.stringify(o));
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const TOL=0.001;
+const catOf=id=> id==='pension'||id==='irp'? 'pension' : id==='dc'? 'dc' : 'other';
+const nextYm=m=>{let [y,mo]=m.split('-').map(Number); mo++; if(mo>12){mo=1;y++} return `${y}-${String(mo).padStart(2,'0')}`};
+// 리밸런싱 탭 입금 기록 → 월별 {pension,dc,other} (만원). start = 입금 기록이 처음 생긴 달
+function depMonthly(){
+  const by={}; let start=null;
+  for(const [id,p] of Object.entries(PF||{})) for(const d of p.deposits||[]){
+    const m=String(d.date||'').slice(0,7); if(!m) continue; if(!start||m<start) start=m;
+    if(d.type!=='new') continue;
+    const c=d.cat||catOf(id); (by[m] ||= {pension:0,dc:0,other:0})[c]+=n(d.amount)/1e4;
+  }
+  return {by,start};
+}
 function wSum(p){ return (p.items||[]).reduce((a,x)=>a+n(x.w),0) }
 function wsSums(p){ const it=(p.items||[]).filter(x=>Array.isArray(x.ws)); if(!it.length) return null;
   const k=Math.max(...it.map(x=>x.ws.length)); return Array.from({length:k},(_,j)=>it.reduce((a,x)=>a+n(x.ws[j]),0)) }
@@ -749,7 +772,7 @@ function rbSeg(){
 function rbRenderAll(){
   rbSeg();
   if(!draft){$('rbItems').innerHTML='<p class="empty">계좌가 없습니다. 아래 계좌 설정에서 계좌를 추가하세요.</p>';['rbTot','rbBuy','rbSell','rbLeft'].forEach(i=>$(i).textContent='–');return}
-  $('rb-cash').value=draft.cash??0; $('rb-name').value=draft.name||''; $('rb-band').value=draft.band??5; $('rb-lock').checked=wLocked(draft);
+  rbDepRender(); $('rb-cash').value=draft.cash??0; $('rb-name').value=draft.name||''; $('rb-band').value=draft.band??5; $('rb-lock').checked=wLocked(draft);
   const it=draft.items||[];
   $('rbItems').innerHTML= it.length? it.map((x,i)=>`<div class="item" data-i="${i}">
     <div class="item-h"><input type="text" data-f="name" id="it-${i}-name" value="${esc(x.name)}" aria-label="종목명"><button type="button" data-del="${i}" aria-label="종목 삭제">×</button></div>
@@ -844,17 +867,35 @@ $('pfSeg').addEventListener('click',e=>{
 $('rbAddItem').addEventListener('click',()=>{if(!draft) return; (draft.items=draft.items||[]).push({name:'새 종목',w:0,qty:0,price:0}); rbDirty(); rbRenderAll();});
 async function rbWrite(doc,okText){
   if(!DB) return msg($('rbMsg'),'저장소에 연결되지 않아 저장할 수 없습니다.',true);
-  const we=weightErr(doc); if(we){ msg($('rbMsg'),we,true); $('rbMsg').scrollIntoView({block:'center',behavior:'smooth'}); return }
-  try{ await DB.doc('portfolios/'+cur).set(doc); dirty=false; msg($('rbMsg'),okText) }
-  catch(err){ msg($('rbMsg'), saveErr(err), true) }
+  const we=weightErr(doc); if(we){ msg($('rbMsg'),we,true); $('rbMsg').scrollIntoView({block:'center',behavior:'smooth'}); return false }
+  try{ await DB.doc('portfolios/'+cur).set(doc); dirty=false; msg($('rbMsg'),okText); return true }
+  catch(err){ msg($('rbMsg'), saveErr(err), true); return false }
 }
 $('rbSave').addEventListener('click',()=>{ if(draft) rbWrite({...draft,updatedAt:new Date().toISOString()},'변경을 저장했습니다.') });
 $('rbDeposit').addEventListener('click',async()=>{
-  if(!draft) return; const v=Math.round(n($('rb-dep').value));
+  if(!draft) return; const v=Math.round(n($('rb-dep').value)), type=$('rb-depType').value, from=$('rb-depFrom').value;
   if(v<=0) return msg($('rbMsg'),'입금액을 입력하세요.',true);
-  draft.cash=n(draft.cash)+v; ORD={}; $('rb-dep').value=''; $('rb-cash').value=draft.cash; rbCalc();
-  await rbWrite({...draft,updatedAt:new Date().toISOString()},`${wonF(v)}을 예수금에 넣었습니다. 종목별 주문 안내를 확인하세요.`);
+  if(type==='xfer'&&(!from||!PF[from])) return msg($('rbMsg'),'어느 계좌에서 옮긴 돈인지 고르세요.',true);
+  const d=todayStr(), entry={date:d,amount:v,type,cat:catOf(cur)}; if(type==='xfer') entry.from=from;
+  const before=n(draft.cash);
+  draft.cash=before+v; draft.deposits=[...(draft.deposits||[]),entry].slice(-500);
+  ORD={}; $('rb-dep').value=''; $('rb-cash').value=draft.cash; rbCalc();
+  const ok=await rbWrite({...draft,updatedAt:new Date().toISOString()},
+    type==='new'? `${wonF(v)}을 예수금에 넣었습니다(저축으로 기록). 종목별 주문 안내를 확인하세요.` : `${PF[from]?.name||from}에서 ${wonF(v)}을 옮겼습니다(저축으로 세지 않음).`);
+  if(!ok){ draft.cash=before; draft.deposits=draft.deposits.slice(0,-1); $('rb-cash').value=draft.cash; rbCalc(); return }
+  if(type==='xfer'){
+    const src=clone(PF[from]); src.cash=n(src.cash)-v; src.deposits=[...(src.deposits||[]),{date:d,amount:-v,type:'xfer',to:cur}].slice(-500); src.updatedAt=new Date().toISOString();
+    try{ await DB.doc('portfolios/'+from).set(src) }catch(e){ msg($('rbMsg'),`보낸 계좌(${src.name||from}) 예수금을 줄이지 못했습니다. 그 계좌에서 예수금을 직접 고치세요.`,true) }
+  }
+  $('rb-depType').value='new'; $('rb-depFrom').hidden=true; render();
 });
+$('rb-depType').addEventListener('change',()=>{ $('rb-depFrom').hidden=$('rb-depType').value!=='xfer' });
+function rbDepRender(){
+  if(!draft) return;
+  $('rb-depFrom').innerHTML='<option value="">보낸 계좌 선택</option>'+pfList().filter(([id])=>id!==cur).map(([id,p])=>`<option value="${esc(id)}">${esc(p.name||id)}</option>`).join('');
+  const last=(draft.deposits||[]).slice(-5).reverse();
+  $('rbDepLog').textContent= last.length? '최근 입금: '+last.map(x=>`${x.date.slice(5).replace('-','/')} ${x.amount<0?'−':'+'}${won(Math.abs(x.amount)/1e4)}${x.type==='xfer'?(x.from?` (${PF[x.from]?.name||x.from}에서 이동)`:` (${PF[x.to]?.name||x.to}로 이동)`):''}`).join(' · ') : '아직 이 화면에서 입금한 기록이 없습니다. 새로 들어온 돈은 저축 속도에 자동 반영됩니다.';
+}
 $('rbReset').addEventListener('click',()=>{ORD={}; rbCalc(); msg($('rbMsg'),'추천 주문으로 되돌렸습니다.')});
 // 주문 반영: idxs 에 있는 종목만 처리. 반영하지 않은 종목의 주문은 그대로 유지
 function buildApply(idxs){
@@ -1213,7 +1254,9 @@ $('asRefresh').addEventListener('click',async()=>{
 $('fillFromAcct').addEventListener('click',()=>{
   if(!STATE) return;
   ACC.forEach(([k])=>{const p=STATE.portfolios?.[k]; if(p) $('f-bal-'+k).value=Math.round(acctValue(p)/1e4)}); updTotal();
-  msg($('formMsg'),'계좌 평가액(만원)으로 채웠습니다. 새로 넣은 돈을 확인한 뒤 저장하세요.');
+  const dep=depMonthly(), m=$('f-month').value, dm=dep.start&&m>=dep.start? (dep.by[m]||{pension:0,dc:0,other:0}) : null;
+  if(dm){ $('f-add-pension').value=Math.round(dm.pension); $('f-add-dc').value=Math.round(dm.dc); $('f-add-other').value=Math.round(dm.other) }
+  msg($('formMsg'), dm? '계좌 평가액과 이번 달 리밸런싱 입금 내역(만원)으로 채웠습니다. 확인한 뒤 저장하세요.' : '계좌 평가액(만원)으로 채웠습니다. 새로 넣은 돈을 확인한 뒤 저장하세요.');
 });
 
 /* 잠금 · 설정 화면 */
@@ -1243,7 +1286,7 @@ function startApp(){
     PF={}; q.docs.forEach(x=>PF[x.id]=x.data());
     if(!cur||!PF[cur]) {cur=pfList()[0]?.[0]||null; dirty=false}
     if(!dirty){draft=cur?clone(PF[cur]):null; rbRenderAll()} else rbSeg();
-    renderAsset();
+    renderAsset(); render();
   });
   renderAsset();
 }
