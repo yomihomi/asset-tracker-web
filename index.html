@@ -326,6 +326,8 @@ input:disabled{opacity:.75}
         <thead><tr><th>월</th><th>금융자산</th><th>적립</th><th>손익</th><th>수익률</th></tr></thead>
         <tbody id="histBody"><tr><td colspan="5" class="empty">기록을 불러오는 중입니다.</td></tr></tbody>
       </table></div>
+      <button class="btn ghost" type="button" id="recAdd">월 기록 추가</button>
+      <p class="note">가장 오래된 달은 투자 수익과 저축을 계산하는 기준점이라, 그달 입금은 저축 속도에 들어가지 않습니다.</p>
     </div>
 
     <div class="card" id="recCard" hidden>
@@ -727,6 +729,7 @@ function renderHistory(d){
 
 /* ---------- 입력 폼 ---------- */
 $('balFields').insertAdjacentHTML('beforeend',ACC.map(([k,t])=>`<label>${t}<input type="number" inputmode="decimal" step="any" id="f-bal-${k}"></label>`).join(''));
+let adding=false;
 function fillForm(rec,asNew){
   const today=new Date(); const def=`${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}`;
   $('f-month').value= asNew? def : rec?.month||def;
@@ -739,7 +742,10 @@ function fillForm(rec,asNew){
   $('delRow').hidden=!editing; $('delLabel').textContent= editing? `저장된 ${editing.replace('-','년 ')}월 기록입니다. 삭제하면 자동 계산값으로 돌아갑니다.`:'';
   $('recTitle').textContent= rec? `${(rec.month||'').replace('-','년 ')}월 기록 고치기 (만원) · ${rec._auto?'지금은 자동 계산값':'저장된 기록'}` : '월 기록 고치기 (만원)';
   $('delBtn').textContent='삭제'; $('delBtn').dataset.armed='';
-  updTotal(); $('saveBtn').textContent= editing?'수정 저장':'이 값으로 저장';
+  $('f-month').disabled=!adding;
+  if(adding){ $('f-month').value=''; $('recTitle').textContent='월 기록 추가 (만원)'; $('fillFromAcct').hidden=true }
+  else $('fillFromAcct').hidden=false;
+  updTotal(); $('saveBtn').textContent= adding?'추가':editing?'수정 저장':'이 값으로 저장';
 }
 function updTotal(){const t=ACC.reduce((a,[k])=>a+n($('f-bal-'+k).value),0);$('formTotal').textContent=`합계 ${won(t)}`}
 $('recForm').addEventListener('input',updTotal);
@@ -748,22 +754,28 @@ function msg(el,t,err){el.textContent=t;el.className='toast'+(err?' err':'')}
 $('recForm').addEventListener('submit',async e=>{
   e.preventDefault(); const m=$('f-month').value;
   if(!/^\d{4}-\d{2}$/.test(m)) return msg($('formMsg'),'기준 월을 선택하세요.',true);
+  if(adding&&RECS.some(r=>r.month===m)) return msg($('formMsg'),`${m.replace('-','년 ')}월 기록은 이미 있습니다. 표에서 그 달을 눌러 고치세요.`,true);
   const rec={month:m,bal:{},add:{pension:n($('f-add-pension').value),dc:n($('f-add-dc').value),other:n($('f-add-other').value)},note:$('f-note').value.trim()};
   const base=RECS.find(r=>r.month===m)||mergedRecs().find(r=>r.month===m); if(base) Object.assign(rec.bal,Object.fromEntries(Object.entries(base.bal||{}).map(([k,v])=>[k,Math.round(n(v))])));
   ACC.forEach(([k])=>rec.bal[k]=n($('f-bal-'+k).value));
   if(total(rec)<=0) return msg($('formMsg'),'계좌 잔고를 하나 이상 입력하세요.',true);
   if(!DB) return msg($('formMsg'),'저장소에 연결되지 않아 저장할 수 없습니다. 페이지를 다시 열어 주세요.',true);
   $('saveBtn').disabled=true;
-  try{ await DB.doc('records/'+m).set(rec); if(editing&&editing!==m) await DB.doc('records/'+editing).delete();
-    msg($('formMsg'),`${m.replace('-','년 ')}월 기록을 저장했습니다. 이 달은 이제 자동 계산 대신 저장한 값을 씁니다.`); fillForm(rec,false);
+  try{ await DB.doc('records/'+m).set(rec); const wasAdding=adding; adding=false;
+    fillForm(rec,false); msg($('formMsg'), wasAdding? `${m.replace('-','년 ')}월 기록을 추가했습니다.` : `${m.replace('-','년 ')}월 기록을 저장했습니다. 이 달은 이제 자동 계산 대신 저장한 값을 씁니다.`);
   }catch(err){ msg($('formMsg'), saveErr(err), true) }
   finally{$('saveBtn').disabled=false}
 });
 $('histBody').addEventListener('click',e=>{const tr=e.target.closest('tr[data-m]'); if(!tr) return; const m=tr.dataset.m;
   const rec=RECS.find(r=>r.month===m)||mergedRecs().find(r=>r.month===m); if(!rec) return;
   const show={...rec,bal:Object.fromEntries(Object.entries(rec.bal||{}).map(([k,v])=>[k,Math.round(n(v))])),add:Object.fromEntries(Object.entries(rec.add||{}).map(([k,v])=>[k,Math.round(n(v))]))};
-  fillForm(show,false); $('recCard').hidden=false; msg($('formMsg'),''); $('recCard').scrollIntoView({behavior:'smooth',block:'start'})});
-$('recClose').addEventListener('click',()=>{ $('recCard').hidden=true });
+  adding=false; fillForm(show,false); $('recCard').hidden=false; msg($('formMsg'),''); $('recCard').scrollIntoView({behavior:'smooth',block:'start'})});
+$('recClose').addEventListener('click',()=>{ $('recCard').hidden=true; adding=false });
+$('recAdd').addEventListener('click',()=>{
+  adding=true; fillForm(null,true);
+  ['f-add-pension','f-add-dc','f-add-other'].forEach(id=>$(id).value=0); ACC.forEach(([k])=>$('f-bal-'+k).value='');
+  $('recCard').hidden=false; msg($('formMsg'),'추가할 달을 고르고 계좌별 잔고와 그달 새로 넣은 돈을 만원 단위로 입력하세요.'); $('recCard').scrollIntoView({behavior:'smooth',block:'start'}); setTimeout(()=>$('f-month').focus(),300);
+});
 $('histBody').addEventListener('keydown',e=>{if(e.key==='Enter') e.target.click()});
 $('delBtn').addEventListener('click',async()=>{
   const b=$('delBtn'); if(!editing) return;
