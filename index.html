@@ -739,7 +739,7 @@ function rbRenderAll(){
       <label>보유 수량<input type="number" inputmode="numeric" step="any" data-f="qty" id="it-${i}-qty" value="${n(x.qty)}"></label>
       <label>현재가 (원)<input type="number" inputmode="numeric" step="any" data-f="price" id="it-${i}-price" value="${n(autoP(x)??x.price)}" ${autoP(x)?'disabled':''}>${autoP(x)?`<span class="auto-tag">자동 · ${esc(PRICES?.date?.slice(5).replace('-','/')||'')}</span>`:''}</label>
     </div>
-    ${Array.isArray(x.ws)?`<label class="item-ws">단계별 목표 % (${esc((ST?.stages||[]).map(s=>s.name.split(' ')[0]).join(' / ')||'중립 / 1차 / 2차')})<input type="text" inputmode="decimal" data-f="ws" id="it-${i}-ws" value="${x.ws.join(' / ')}"></label>`:''}
+    ${Array.isArray(x.ws)?`<label class="item-ws">단계별 목표 % (${esc((ST?.stages||[]).map(s=>sn(s.name).split(' ')[0]).join(' / ')||'중립형 / 1차 / 성장형')})<input type="text" inputmode="decimal" data-f="ws" id="it-${i}-ws" value="${x.ws.join(' / ')}"></label>`:''}
     <div class="item-r" id="ir-${i}"></div>
     <div class="ord" id="ord-${i}">
       <select data-o="side" id="o-${i}-side" aria-label="주문 구분"><option value="buy">매수</option><option value="sell">매도</option><option value="none">주문 없음</option></select>
@@ -883,6 +883,7 @@ $('rbDelPf').addEventListener('click',async()=>{
 
 /* ---------- 전환 전략 ---------- */
 let ST=null, stIdx=[];
+const sn=nm=>{const m=String(nm||'').match(/\(([^)]+)\)\s*$/); return m?m[1]:String(nm||'')};  // 단계 이름 표시용
 const todayStr=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`};
 const mdTxt=s=>{const [,m,d]=s.split('-').map(Number);return `${m}월 ${d}일`};
 const IDX_KEY={'S&P500':'SPX','코스피':'KOSPI'};
@@ -913,36 +914,36 @@ function stRenderAll(){
     <label>현재<input type="number" inputmode="decimal" step="any" id="ix-${i}-cur" data-ix="${i}" data-k="cur" value="${x.cur??''}" placeholder="오늘 지수"></label>
     <span class="dd" id="ixdd-${i}">–</span></div>`).join('');
   $('stSaveIdx').hidden=rows.every(x=>x.auto);
-  $('stTrig').innerHTML='<legend>전환 조건 (고점 대비 %)</legend>'+ST.stages.map((s,i)=>i===0?'':`<label>${esc(s.name)}<input type="number" inputmode="decimal" step="any" id="tg-${i}" value="${n(s.trigger)}"></label>`).join('');
-  $('stManual').innerHTML=ST.stages.map((s,i)=>`<button class="btn ghost" type="button" data-man="${i}">${esc(s.name.split(' ')[0])}로 지정</button>`).join('');
-  $('stLog').innerHTML=(ST.log||[]).slice().reverse().map(l=>`<li><span class="d">${esc(l.date)}</span><span>${esc(l.name)}${l.note?` · ${esc(l.note)}`:''}</span></li>`).join('')||'<li class="note">아직 전환 기록이 없습니다.</li>';
+  $('stTrig').innerHTML='<legend>전환 조건 (고점 대비 %)</legend>'+ST.stages.map((s,i)=>i===0?'':`<label>${esc(sn(s.name))}<input type="number" inputmode="decimal" step="any" id="tg-${i}" value="${n(s.trigger)}"></label>`).join('');
+  $('stManual').innerHTML=ST.stages.map((s,i)=>`<button class="btn ghost" type="button" data-man="${i}">${esc(sn(s.name).split(' ')[0])}로 지정</button>`).join('');
+  $('stLog').innerHTML=(ST.log||[]).slice().reverse().map(l=>`<li><span class="d">${esc(l.date)}</span><span>${esc(sn(l.name))}${l.note?` · ${esc(l.note)}`:''}</span></li>`).join('')||'<li class="note">아직 전환 기록이 없습니다.</li>';
   stCalc();
 }
 function stCalc(){
   if(!ST) return; const e=stEval(), S2=ST.stages;
   e.ddAll.forEach((v,i)=>{const el=$('ixdd-'+i); if(!el) return; el.textContent=v===null?'–':(v>0?'+':'')+v.toFixed(1)+'%';
     el.className='dd'+(v!==null&&S2[2]&&v<=n(S2[2].trigger)?' bad':v!==null&&S2[1]&&v<=n(S2[1].trigger)?' warn':'')});
-  $('stStages').innerHTML=S2.map((s,i)=>`<div class="stage ${i===e.act?'on':''} ${i===e.target&&i!==e.act?'next':''}"><span class="t">${esc(s.name)}</span><span class="c">${i===0?'기본 단계':`고점 대비 ${n(s.trigger)}%`}</span></div>`).join('');
+  $('stStages').innerHTML=S2.map((s,i)=>`<div class="stage ${i===e.act?'on':''} ${i===e.target&&i!==e.act?'next':''}"><span class="t">${esc(sn(s.name))}</span><span class="c">${i===0?'기본 단계':`고점 대비 ${n(s.trigger)}%`}</span></div>`).join('');
   const sig=$('stSignal'), btn=$('stApply'), home=$('stHome'); let homeTxt='';
   if(e.act<0){
     const dday=e.sch? Math.round((new Date(e.sch.date+'T00:00:00')-new Date(todayStr()+'T00:00:00'))/864e5):0;
     sig.className= e.due?'chip warn':'chip good';
-    sig.textContent= e.due? `${S2[0].name} 전환일입니다${e.sch?` (${mdTxt(e.sch.date)})`:''}` : `${mdTxt(e.sch.date)} ${S2[0].name} 전환 예정 · D-${dday}`;
-    btn.disabled=false; btn.textContent= e.due? `${S2[0].name} 전환 적용` : `${S2[0].name} 미리 적용`;
-    if(e.due) homeTxt=`오늘은 연금계좌 ${S2[0].name} 전환일입니다. 리밸런싱 탭에서 적용하세요.`;
+    sig.textContent= e.due? `${sn(S2[0].name)} 전환일입니다${e.sch?` (${mdTxt(e.sch.date)})`:''}` : `${mdTxt(e.sch.date)} ${sn(S2[0].name)} 전환 예정 · D-${dday}`;
+    btn.disabled=false; btn.textContent= e.due? `${sn(S2[0].name)} 전환 적용` : `${sn(S2[0].name)} 미리 적용`;
+    if(e.due) homeTxt=`오늘은 연금계좌 ${sn(S2[0].name)} 전환일입니다. 리밸런싱 탭에서 적용하세요.`;
   } else if(e.target>e.act){
     const who=e.rows.map((x,i)=>e.dds[i]!==null&&e.dds[i]<=n(S2[e.target].trigger)?`${x.name} ${e.dds[i].toFixed(1)}%`:null).filter(Boolean).join(', ');
-    sig.className='chip bad'; sig.textContent=`${who} · ${S2[e.target].name} 조건 충족`;
-    btn.disabled=false; btn.textContent=`${S2[e.target].name} 적용`;
-    homeTxt=`${who}: 연금계좌 ${S2[e.target].name} 조건을 충족했습니다. 리밸런싱 탭에서 확인하세요.`;
+    sig.className='chip bad'; sig.textContent=`${who} · ${sn(S2[e.target].name)} 조건 충족`;
+    btn.disabled=false; btn.textContent=`${sn(S2[e.target].name)} 적용`;
+    homeTxt=`${who}: 연금계좌 ${sn(S2[e.target].name)} 조건을 충족했습니다. 리밸런싱 탭에서 확인하세요.`;
   } else {
     sig.className='chip good';
-    sig.textContent= e.worst===null? `현재 ${S2[e.act].name} · 조건에 쓸 지수가 없습니다` : `현재 ${S2[e.act].name} 유지 · 조건 지수 최대 낙폭 ${e.worst.toFixed(1)}%`;
+    sig.textContent= e.worst===null? `현재 ${sn(S2[e.act].name)} · 조건에 쓸 지수가 없습니다` : `현재 ${sn(S2[e.act].name)} 유지 · 조건 지수 최대 낙폭 ${e.worst.toFixed(1)}%`;
     btn.disabled=true; btn.textContent= e.act>=S2.length-1? '마지막 단계입니다':'전환 조건 미충족';
   }
   btn.dataset.armed='';
   home.hidden=!homeTxt; home.textContent=homeTxt;
-  const tr=S2.slice(1).map(s=>`${n(s.trigger)}% 이하면 ${s.name}`).join(', ');
+  const tr=S2.slice(1).map(s=>`${n(s.trigger)}% 이하면 ${sn(s.name)}`).join(', ');
   const used=e.rows.filter(x=>x.use!==false).map(x=>x.name).join('·')||'없음';
   $('stRule').textContent=`체크한 지수(${used}) 중 하나라도 기준 고점 대비 ${tr}입니다. 기준 고점은 처음에 최근 52주 최고 종가로 시작하고, 그보다 높은 종가가 나오면 자동으로 올라갑니다(내려가지 않음). 지수는 평일 장 마감 후 자동 갱신됩니다. 단계는 올라가기만 하고, 50세(${S.birthYear+50}년) 전에는 되돌리지 않습니다.`;
 }
@@ -975,7 +976,7 @@ async function stApplyStage(stage,note){
   const name=ST.stages[stage].name, log=[...(ST.log||[]),{date:todayStr(),stage,name,note}];
   if(await stWrite({...ST,active:stage,scheduled:null,log})){
     const names=(ST.targets||[]).map(id=>PF[id]?.name||id).join('·');
-    msg($('stMsg'),`${name} 목표비중을 ${names}에 적용했습니다. 아래 계산 방식이 '전체 리밸런싱'으로 바뀌었으니 매매 수량을 확인하세요.`);
+    msg($('stMsg'),`${sn(name)} 목표비중을 ${names}에 적용했습니다. 아래 계산 방식이 '전체 리밸런싱'으로 바뀌었으니 매매 수량을 확인하세요.`);
     MD='full'; ORD={}; document.querySelectorAll('[data-md]').forEach(x=>x.setAttribute('aria-pressed',x.dataset.md==='full')); rbCalc();
   }
 }
