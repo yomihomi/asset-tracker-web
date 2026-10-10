@@ -99,6 +99,14 @@ nav.tabs button[aria-current="page"]{color:var(--accent);font-weight:700;backgro
 .item-r{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;font-size:13.5px;color:var(--muted)}
 .item-r b{font-weight:600;color:var(--ink)}
 .item-r b.buy{color:var(--good)} .item-r b.sell{color:var(--bad)}
+.ord{display:grid;grid-template-columns:auto minmax(0,.8fr) auto minmax(0,1.2fr) auto;gap:6px;align-items:center;border-top:1px dashed var(--line);padding-top:8px}
+.ord select,.ord input{padding:7px 8px;font-size:15px;background:var(--surface)}
+.ord select{width:auto;font-weight:600}
+.ord .u{font-size:13px;color:var(--muted)}
+.ord .oa{grid-column:1/-1;text-align:right;font-size:13.5px;font-weight:600}
+.ord.buy select{color:var(--good)} .ord.sell select{color:var(--bad)}
+.ord.none input,.ord.none .u{opacity:.4}
+.oa.buy{color:var(--good)} .oa.sell{color:var(--bad)} .oa.warn{color:var(--warn)}
 .stages{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
 .stage{border:1px solid var(--line);border-radius:10px;padding:8px 10px;display:flex;flex-direction:column;gap:2px;min-width:0}
 .stage .t{font-size:13.5px;font-weight:600} .stage .c{font-size:12px;color:var(--muted)}
@@ -355,20 +363,24 @@ input:disabled{opacity:.75}
       <h2>입금 리밸런싱</h2>
       <div class="seg wrap-seg" id="pfSeg" role="group" aria-label="계좌"></div>
       <fieldset>
-        <label>현재 예수금 (원)<input type="number" inputmode="numeric" id="rb-cash" step="any"></label>
-        <label>이번 입금액 (원)<input type="number" inputmode="numeric" id="rb-dep" step="any" placeholder="0"></label>
+        <label class="full">현재 예수금 (원)<input type="number" inputmode="numeric" id="rb-cash" step="any"></label>
       </fieldset>
+      <div class="row">
+        <input type="number" inputmode="numeric" id="rb-dep" step="any" placeholder="입금액 (원)" aria-label="입금액" style="flex:2;min-width:0">
+        <button class="btn ghost" type="button" id="rbDeposit">예수금에 입금</button>
+      </div>
       <div class="seg" role="group" aria-label="계산 방식">
         <button type="button" id="md-buy" data-md="buy" aria-pressed="true">매수 전용</button>
         <button type="button" id="md-full" data-md="full" aria-pressed="false">전체 리밸런싱</button>
       </div>
       <span class="chip good" id="rbSignal">–</span>
       <div class="kv">
-        <div><span class="k">입금 후 총액</span><span class="v num" id="rbTot">–</span></div>
+        <div><span class="k">계좌 총액</span><span class="v num" id="rbTot">–</span></div>
         <div><span class="k">매수 합계</span><span class="v num" id="rbBuy">–</span></div>
         <div><span class="k">매도 합계</span><span class="v num" id="rbSell">–</span></div>
-        <div><span class="k">매매 후 남는 현금</span><span class="v num" id="rbLeft">–</span></div>
+        <div><span class="k">매매 후 예수금</span><span class="v num" id="rbLeft">–</span></div>
       </div>
+      <button class="btn ghost" type="button" id="rbReset">추천 주문으로 되돌리기</button>
       <p class="note" id="rbWsum"></p>
     </div>
 
@@ -385,7 +397,7 @@ input:disabled{opacity:.75}
         <button class="btn ghost" type="button" id="rbApply">매매 완료 반영</button>
       </div>
       <p class="toast" id="rbMsg" role="status"></p>
-      <p class="note">'매매 완료 반영'은 위 주문대로 체결됐다고 보고 보유 수량과 예수금을 바꿔 저장합니다. 실제 체결 수량이 다르면 수량 칸을 고친 뒤 '변경 저장'을 누르세요. 현재가는 증권 앱에서 보고 직접 입력합니다.</p>
+      <p class="note">'매매 완료 반영'은 종목마다 적힌 주문(매수·매도, 수량, 체결가) 그대로 보유 수량을 바꾸고, 예수금에서 매수 금액을 빼고 매도 금액을 더해 저장합니다. 실제 체결 내역에 맞게 고친 뒤 누르세요. 수수료·세금으로 생긴 몇 원 차이는 예수금 칸을 고치고 '변경 저장'을 누르면 됩니다.</p>
       <fieldset>
         <legend>계좌 설정</legend>
         <label>계좌 이름<input type="text" id="rb-name" maxlength="20"></label>
@@ -680,7 +692,7 @@ document.querySelectorAll('[data-sc]').forEach(b=>b.addEventListener('click',()=
 try{const t=localStorage.getItem('tab'); if(t&&t!=='home') $('t-'+t).click(); const sc=localStorage.getItem('sc'); if(sc&&sc!=='real'){SC=sc;document.querySelectorAll('[data-sc]').forEach(x=>x.setAttribute('aria-pressed',x.dataset.sc===sc))}}catch{}
 
 /* ---------- 리밸런싱 ---------- */
-let PF={}, cur=null, draft=null, dirty=false, MD='buy', switchArmed=null;
+let PF={}, cur=null, draft=null, dirty=false, MD='buy', switchArmed=null, ORD={};  // ORD: 종목 순번별 주문 {side,q,p,edited}
 const wonF=v=>Math.round(v).toLocaleString('ko-KR')+'원';
 const clone=o=>JSON.parse(JSON.stringify(o));
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -725,24 +737,47 @@ function rbRenderAll(){
       <label>현재가 (원)<input type="number" inputmode="numeric" step="any" data-f="price" id="it-${i}-price" value="${n(autoP(x)??x.price)}" ${autoP(x)?'disabled':''}>${autoP(x)?`<span class="auto-tag">자동 · ${esc(PRICES?.date?.slice(5).replace('-','/')||'')}</span>`:''}</label>
     </div>
     ${Array.isArray(x.ws)?`<label class="item-ws">단계별 목표 % (${esc((ST?.stages||[]).map(s=>s.name.split(' ')[0]).join(' / ')||'중립 / 1차 / 2차')})<input type="text" inputmode="decimal" data-f="ws" id="it-${i}-ws" value="${x.ws.join(' / ')}"></label>`:''}
-    <div class="item-r" id="ir-${i}"></div></div>`).join('') : '<p class="empty">종목이 없습니다. 종목 추가를 누르세요.</p>';
+    <div class="item-r" id="ir-${i}"></div>
+    <div class="ord" id="ord-${i}">
+      <select data-o="side" id="o-${i}-side" aria-label="주문 구분"><option value="buy">매수</option><option value="sell">매도</option><option value="none">주문 없음</option></select>
+      <input type="number" inputmode="numeric" step="1" min="0" data-o="q" id="o-${i}-q" aria-label="주문 수량"><span class="u">주 ×</span>
+      <input type="number" inputmode="numeric" step="any" min="0" data-o="p" id="o-${i}-p" aria-label="체결가"><span class="u">원</span>
+      <span class="oa num" id="oa-${i}"></span>
+    </div></div>`).join('') : '<p class="empty">종목이 없습니다. 종목 추가를 누르세요.</p>';
   rbCalc();
 }
 function rbCalc(){
   if(!draft) return;
-  const r=rbPlan(draft,$('rb-dep').value,MD), it=draft.items||[], band=n(draft.band||5);
-  $('rbTot').textContent=wonF(r.tot); $('rbBuy').textContent=wonF(r.buy); $('rbSell').textContent=wonF(r.sell); $('rbLeft').textContent=wonF(r.left);
+  const r=rbPlan(draft,0,MD), it=draft.items||[], band=n(draft.band||5);
+  // 추천 주문으로 채우기(사용자가 고친 줄은 그대로)
+  it.forEach((x,i)=>{ const pr=n(autoP(x)??x.price), d=r.d[i];
+    if(!ORD[i]?.edited) ORD[i]={side:d>0?'buy':d<0?'sell':'none', q:Math.abs(d), p:pr};
+    const o=ORD[i], set=(id,v)=>{const el=$(id); if(el&&document.activeElement!==el) el.value=v};
+    set(`o-${i}-side`,o.side); set(`o-${i}-q`,o.q); set(`o-${i}-p`,o.p);
+    $('ord-'+i)?.setAttribute('class','ord '+o.side);
+  });
+  // 실제 주문 기준 합계와 주문 후 비중
+  let buy=0,sell=0; const after=[];
+  it.forEach((x,i)=>{ const o=ORD[i], sg=o.side==='buy'?1:o.side==='sell'?-1:0, amt=n(o.q)*n(o.p);
+    if(sg>0) buy+=amt; if(sg<0) sell+=amt; after[i]=Math.max(0,n(x.qty)+sg*n(o.q))*n(autoP(x)??x.price) });
+  const cashAfter=n(draft.cash)-buy+sell, totAfter=after.reduce((a,b)=>a+b,0)+cashAfter;
+  $('rbTot').textContent=wonF(r.tot0); $('rbBuy').textContent=wonF(buy); $('rbSell').textContent=wonF(sell);
+  $('rbLeft').textContent=wonF(cashAfter); $('rbLeft').style.color= cashAfter<0?'var(--bad)':'';
   let maxDr=0, maxNm='';
   it.forEach((x,i)=>{
-    const nowW=r.tot0? r.val[i]/r.tot0*100:0, aftW=r.tot? r.after[i]/r.tot*100:0, dr=Math.abs(nowW-n(x.w));
+    const nowW=r.tot0? r.val[i]/r.tot0*100:0, aftW=totAfter? after[i]/totAfter*100:0, dr=Math.abs(nowW-n(x.w));
     if(dr>maxDr){maxDr=dr;maxNm=x.name}
     const el=$('ir-'+i); if(!el) return;
     el.closest('.item').classList.toggle('drift',dr>band);
-    const q=r.d[i], amt=q*n(autoP(x)??x.price);
-    el.innerHTML=`<span class="num">현재 ${nowW.toFixed(1)}% → ${aftW.toFixed(1)}%</span>${q? `<b class="num ${q>0?'buy':'sell'}">${q>0?'매수':'매도'} ${Math.abs(q).toLocaleString('ko-KR')}주 · ${wonF(Math.abs(amt))}</b>`:'<b class="num">유지</b>'}`;
+    el.innerHTML=`<span class="num">현재 ${nowW.toFixed(1)}% → 주문 후 ${aftW.toFixed(1)}%</span><span class="num">목표 ${n(x.w)}%</span>`;
+    const o=ORD[i], oa=$('oa-'+i), amt=n(o.q)*n(o.p);
+    if(o.side==='sell'&&n(o.q)>n(x.qty)){oa.className='oa num warn'; oa.textContent=`보유 ${n(x.qty)}주보다 많이 팔 수 없습니다`}
+    else if(o.side==='none'||!amt){oa.className='oa num'; oa.textContent='유지'}
+    else{oa.className='oa num '+o.side; oa.textContent=`${o.side==='buy'?'매수':'매도'} 금액 ${wonF(amt)}`}
   });
   const sig=$('rbSignal');
-  if(maxDr>band){sig.className='chip warn';sig.textContent=`${maxNm} ${maxDr.toFixed(1)}%p 이탈 · 전체 리밸런싱 권장`}
+  if(cashAfter<0){sig.className='chip bad';sig.textContent=`예수금이 ${wonF(-cashAfter)} 부족합니다 · 수량이나 체결가를 확인하세요`}
+  else if(maxDr>band){sig.className='chip warn';sig.textContent=`${maxNm} ${maxDr.toFixed(1)}%p 이탈 · 전체 리밸런싱 권장`}
   else{sig.className='chip good';sig.textContent=`모든 종목 ±${band}%p 이내 · 매수 전용으로 충분`}
   const ws=it.reduce((a,x)=>a+n(x.w),0);
   $('rbWsum').textContent= ws>100.001? `목표 비중 합계가 ${ws.toFixed(1)}%입니다. 100% 이하로 맞추세요.` : `목표 비중 합계 ${ws.toFixed(1)}%${ws<99.999?` · 나머지 ${(100-ws).toFixed(1)}%는 예수금으로 둡니다`:''}. 주황 테두리는 목표에서 ±${band}%p 넘게 벗어난 종목입니다.`;
@@ -750,6 +785,8 @@ function rbCalc(){
 }
 function rbDirty(){dirty=true; msg($('rbMsg'),'저장하지 않은 변경이 있습니다.')}
 $('rbItems').addEventListener('input',e=>{
+  const ok=e.target.dataset.o, oi=+e.target.closest('.item')?.dataset.i;
+  if(ok&&draft){ ORD[oi]={...ORD[oi],[ok]: ok==='side'? e.target.value : n(e.target.value), edited:true}; rbCalc(); return }
   const f=e.target.dataset.f, i=+e.target.closest('.item')?.dataset.i; if(!f||!draft) return;
   if(f==='src'||f==='code') return;
   draft.items[i][f]= f==='name'? e.target.value : f==='ws'? e.target.value.split('/').map(s=>n(s.trim())) : n(e.target.value); rbDirty(); rbCalc();
@@ -761,17 +798,16 @@ $('rbItems').addEventListener('change',e=>{
 $('rbItems').addEventListener('click',e=>{
   const b=e.target.closest('[data-del]'); if(!b) return;
   if(b.dataset.armed!=='1'){b.dataset.armed='1';b.textContent='삭제?';return}
-  draft.items.splice(+b.dataset.del,1); rbDirty(); rbRenderAll();
+  draft.items.splice(+b.dataset.del,1); ORD={}; rbDirty(); rbRenderAll();
 });
 $('rb-cash').addEventListener('input',e=>{if(draft){draft.cash=n(e.target.value);rbDirty();rbCalc()}});
-$('rb-dep').addEventListener('input',rbCalc);
 $('rb-name').addEventListener('input',e=>{if(draft){draft.name=e.target.value;rbDirty()}});
 $('rb-band').addEventListener('input',e=>{if(draft){draft.band=n(e.target.value)||5;rbDirty();rbCalc()}});
-document.querySelectorAll('[data-md]').forEach(b=>b.addEventListener('click',()=>{MD=b.dataset.md;document.querySelectorAll('[data-md]').forEach(x=>x.setAttribute('aria-pressed',x===b));rbCalc()}));
+document.querySelectorAll('[data-md]').forEach(b=>b.addEventListener('click',()=>{MD=b.dataset.md; ORD={};document.querySelectorAll('[data-md]').forEach(x=>x.setAttribute('aria-pressed',x===b));rbCalc()}));
 $('pfSeg').addEventListener('click',e=>{
   const b=e.target.closest('[data-pf]'); if(!b||b.dataset.pf===cur) return;
   if(dirty&&switchArmed!==b.dataset.pf){switchArmed=b.dataset.pf;msg($('rbMsg'),'저장하지 않은 변경이 있습니다. 한 번 더 누르면 변경을 버리고 이동합니다.',true);return}
-  switchArmed=null; cur=b.dataset.pf; draft=clone(PF[cur]); dirty=false; $('rb-dep').value=''; msg($('rbMsg'),''); rbRenderAll();
+  switchArmed=null; cur=b.dataset.pf; draft=clone(PF[cur]); dirty=false; ORD={}; $('rb-dep').value=''; msg($('rbMsg'),''); rbRenderAll();
 });
 $('rbAddItem').addEventListener('click',()=>{if(!draft) return; (draft.items=draft.items||[]).push({name:'새 종목',w:0,qty:0,price:0}); rbDirty(); rbRenderAll();});
 async function rbWrite(doc,okText){
@@ -780,13 +816,32 @@ async function rbWrite(doc,okText){
   catch(err){ msg($('rbMsg'), saveErr(err), true) }
 }
 $('rbSave').addEventListener('click',()=>{ if(draft) rbWrite({...draft,updatedAt:new Date().toISOString()},'변경을 저장했습니다.') });
+$('rbDeposit').addEventListener('click',async()=>{
+  if(!draft) return; const v=Math.round(n($('rb-dep').value));
+  if(v<=0) return msg($('rbMsg'),'입금액을 입력하세요.',true);
+  draft.cash=n(draft.cash)+v; ORD={}; $('rb-dep').value=''; $('rb-cash').value=draft.cash; rbCalc();
+  await rbWrite({...draft,updatedAt:new Date().toISOString()},`${wonF(v)}을 예수금에 넣었습니다. 종목별 주문 안내를 확인하세요.`);
+});
+$('rbReset').addEventListener('click',()=>{ORD={}; rbCalc(); msg($('rbMsg'),'추천 주문으로 되돌렸습니다.')});
 $('rbApply').addEventListener('click',async()=>{
   const b=$('rbApply'); if(!draft) return;
-  if(b.dataset.armed!=='1'){b.dataset.armed='1';b.textContent='한 번 더 누르면 반영';setTimeout(()=>{b.dataset.armed='';b.textContent='매매 완료 반영'},5000);return}
+  const next=clone(draft), trades=[]; let buy=0,sell=0; const over=[];
+  next.items.forEach((x,i)=>{ const o=ORD[i]; if(!o||o.side==='none'||!(n(o.q)>0)) return;
+    const q=n(o.q), pr=n(o.p);
+    if(o.side==='buy'){ x.qty=n(x.qty)+q; buy+=q*pr } else { if(q>n(x.qty)) over.push(x.name); x.qty=n(x.qty)-q; sell+=q*pr }
+    if(pr>0) x.price=pr;
+    trades.push({name:x.name,code:x.code||'',side:o.side,q,p:pr});
+  });
+  if(over.length) return msg($('rbMsg'),`보유 수량보다 많이 팔 수 없습니다: ${over.join(', ')}`,true);
+  if(!trades.length) return msg($('rbMsg'),'반영할 주문이 없습니다. 수량을 확인하세요.',true);
+  const cashAfter=Math.round(n(next.cash)-buy+sell);
+  if(cashAfter<0) return msg($('rbMsg'),`예수금이 ${wonF(-cashAfter)} 부족합니다. 수량이나 체결가를 확인하세요.`,true);
+  if(b.dataset.armed!=='1'){b.dataset.armed='1';b.textContent=`한 번 더 누르면 ${trades.length}건 반영`;setTimeout(()=>{b.dataset.armed='';b.textContent='매매 완료 반영'},5000);return}
   b.dataset.armed='';b.textContent='매매 완료 반영';
-  const r=rbPlan(draft,$('rb-dep').value,MD), next=clone(draft);
-  next.items.forEach((x,i)=>x.qty=n(x.qty)+r.d[i]); next.cash=Math.round(r.left); next.updatedAt=new Date().toISOString();
-  draft=next; $('rb-dep').value=''; await rbWrite(next,'매매 결과를 보유 수량과 예수금에 반영했습니다.'); rbRenderAll();
+  next.cash=cashAfter; next.updatedAt=new Date().toISOString();
+  next.trades=[...(next.trades||[]),{date:todayStr(),buy:Math.round(buy),sell:Math.round(sell),cashAfter,items:trades}].slice(-200);
+  draft=next; ORD={};
+  await rbWrite(next,`${trades.length}건을 반영했습니다. 매수 ${wonF(buy)} · 매도 ${wonF(sell)} · 예수금 ${wonF(cashAfter)}`); rbRenderAll();
 });
 $('rbAddPf').addEventListener('click',async()=>{
   const nm=$('rb-newName').value.trim(); if(!nm) return msg($('rbMsg'),'새 계좌 이름을 입력하세요.',true);
@@ -897,7 +952,7 @@ async function stApplyStage(stage,note){
   if(await stWrite({...ST,active:stage,scheduled:null,log})){
     const names=(ST.targets||[]).map(id=>PF[id]?.name||id).join('·');
     msg($('stMsg'),`${name} 목표비중을 ${names}에 적용했습니다. 아래 계산 방식이 '전체 리밸런싱'으로 바뀌었으니 매매 수량을 확인하세요.`);
-    MD='full'; document.querySelectorAll('[data-md]').forEach(x=>x.setAttribute('aria-pressed',x.dataset.md==='full')); rbCalc();
+    MD='full'; ORD={}; document.querySelectorAll('[data-md]').forEach(x=>x.setAttribute('aria-pressed',x.dataset.md==='full')); rbCalc();
   }
 }
 $('stApply').addEventListener('click',()=>{
