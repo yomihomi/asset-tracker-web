@@ -172,6 +172,16 @@ input:disabled{opacity:.75}
 .acct .vv{text-align:right;display:flex;flex-direction:column;align-items:flex-end}
 .acct .dv{font-size:12.5px}
 .pos{color:var(--good)} .neg{color:var(--bad)}
+.cls{border-bottom:1px solid var(--line)} .cls:last-child{border-bottom:0}
+.cls summary{list-style:none;cursor:pointer;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 10px;padding:10px 0}
+.cls summary::-webkit-details-marker{display:none}
+.cls .cn{font-weight:600} .cls .cv{text-align:right;font-family:var(--font-num);font-weight:600}
+.cls .cb{grid-column:1/-1;height:6px;background:var(--bg);border-radius:99px;overflow:hidden;border:1px solid var(--line)}
+.cls .cb i{display:block;height:100%;background:var(--accent)}
+.cls .cs{grid-column:1/-1;font-size:12.5px;color:var(--muted)}
+.cls .cd{padding:0 0 10px 10px;display:flex;flex-direction:column;gap:3px;font-size:13.5px}
+.cls .cd div{display:flex;justify-content:space-between;gap:8px} .cls .cd .num{font-family:var(--font-num)}
+.cls .cd .sub{color:var(--muted);font-size:12.5px;margin-top:4px}
 @media (prefers-reduced-motion: no-preference){.bar > i{transition:width .4s ease}}
 </style>
 </head>
@@ -318,6 +328,11 @@ input:disabled{opacity:.75}
       <h2>계좌별 현황</h2>
       <div id="acctList"></div>
       <p class="note">평가액은 저장된 보유 수량 × 최신 자동 가격입니다. 전일 대비는 직전 일별 기록과 비교합니다. 예금·현금 계좌는 일별 추이에서 빠집니다.</p>
+    </div>
+    <div class="card">
+      <h2>자산군별 비중 (전체 계좌 합산)</h2>
+      <div id="clsList"></div>
+      <p class="note">줄을 누르면 계좌별 내역이 펼쳐집니다. 자산군은 종목 이름으로 자동 판단하고, 리밸런싱 탭 종목 카드의 '자산군'에서 바꿀 수 있습니다. 200미국채혼합은 한국 주식 40% · 미국 채권 60%로 나눠 셉니다. 연금계좌 = 연금저축·IRP·DC.</p>
     </div>
   </section>
 
@@ -891,6 +906,7 @@ function rbRenderAll(){
     <div class="item-h"><input type="text" data-f="name" id="it-${i}-name" value="${esc(x.name)}" aria-label="종목명"><button type="button" data-del="${i}" aria-label="종목 삭제">×</button></div>
     <div class="item-meta">
       <label>종목코드<input type="text" data-f="code" id="it-${i}-code" value="${esc(x.code||'')}" autocapitalize="characters"></label>
+      <label class="full" style="grid-column:1/-1">자산군<select data-f="cls" id="it-${i}-cls">${CLS_OPTS.map(([v,t])=>`<option value="${v}" ${(x.cls||'')===v?'selected':''}>${v?t:`자동 (${clsName(autoCls(x))})`}</option>`).join('')}</select></label>
       <label>가격 출처<select data-f="src" id="it-${i}-src">${[['kr','자동 · 국내'],['us','자동 · 미국'],['gold','자동 · 금 현물'],['manual','직접 입력 · 원화'],['usdm','직접 입력 · 달러']].map(([v,t])=>`<option value="${v}" ${(x.src||'manual')===v?'selected':''}>${t}</option>`).join('')}</select></label>
     </div>
     <div class="item-g">
@@ -955,12 +971,12 @@ $('rbItems').addEventListener('input',e=>{
   const ok=e.target.dataset.o, oi=+e.target.closest('.item')?.dataset.i;
   if(ok&&draft){ ORD[oi]={...ORD[oi],[ok]: ok==='side'? e.target.value : n(e.target.value), edited:true}; rbCalc(); return }
   const f=e.target.dataset.f, i=+e.target.closest('.item')?.dataset.i; if(!f||!draft) return;
-  if(f==='src'||f==='code') return;
+  if(f==='src'||f==='code'||f==='cls') return;
   draft.items[i][f]= f==='name'? e.target.value : f==='ws'? e.target.value.split('/').map(s=>n(s.trim())) : n(e.target.value); rbDirty(); rbCalc();
   if((f==='price'||f==='qty')&&draft.items[i].src==='usdm'){ const tg=$('it-'+i+'-price')?.parentElement.querySelector('.auto-tag'); if(tg) tg.textContent=usdTag(draft.items[i]) }
 });
 $('rbItems').addEventListener('change',e=>{
-  const f=e.target.dataset.f, i=+e.target.closest('.item')?.dataset.i; if((f!=='src'&&f!=='code')||!draft) return;
+  const f=e.target.dataset.f, i=+e.target.closest('.item')?.dataset.i; if((f!=='src'&&f!=='code'&&f!=='cls')||!draft) return;
   draft.items[i][f]= f==='code'? e.target.value.trim().toUpperCase() : e.target.value; rbDirty(); rbRenderAll();
 });
 $('rbItems').addEventListener('click',e=>{
@@ -1360,6 +1376,51 @@ function dayChartSVG(rows){
   s+=`<circle cx="${X(rows.at(-1).date)}" cy="${Y(rows.at(-1).total)}" r="4" fill="var(--accent)"/>`;
   return s+'</svg>';
 }
+// 자산군 분류: 종목 이름으로 자동 판단(공개 코드에 보유 종목을 적지 않기 위해), 종목 카드에서 직접 지정 가능
+const CLS_OPTS=[['','자동'],['us','미국 주식'],['kr','한국 주식 (지수)'],['cn','중국 주식'],['in','인도 주식'],['stock:반도체','개별주 · 반도체'],['stock:바이오','개별주 · 바이오'],['stock:AI','개별주 · AI'],['stock:기타','개별주 · 기타'],['gold','금'],['bond_us','미국 채권'],['bond_kr','국내 채권'],['mix','주식·채권 혼합 (한국주식 40 / 미국채 60)'],['cash','현금성'],['etc','기타']];
+const CLS_LABEL={us:'미국 주식',kr:'한국 주식 (지수)',cn:'중국 주식',in:'인도 주식',stock:'개별주',gold:'금',bond_us:'미국 채권',bond_kr:'국내 채권',cash:'현금성',etc:'기타'};
+const CLS_ORDER=['us','kr','cn','in','stock','gold','bond_us','bond_kr','cash','etc'];
+const clsName=c=> c.startsWith('stock:')? `개별주 · ${c.slice(6)}` : c==='mix'? '혼합' : CLS_LABEL[c]||c;
+function autoCls(x){
+  const nm=String(x.name||'').replace(/\s/g,''), u=nm.toUpperCase();
+  if(nm.includes('혼합')) return 'mix';
+  if(/KOFR|CD금리|SOFR|MMF|단기채|머니마켓|예수금/.test(u)||/^(원화|달러)?RP$/.test(u)||u.endsWith('RP')) return 'cash';
+  if(x.src==='gold'||/금현물|국제금|골드|GOLD/.test(u)) return 'gold';
+  if(/미국채|미국\d+년|美國債|TREASURY/.test(u)||(nm.includes('미국')&&nm.includes('국채'))) return 'bond_us';
+  if(/국고채|국채|통안채|회사채|채권/.test(nm)) return 'bond_kr';
+  if(/S&P|S＆P|나스닥|NASDAQ|다우|미국/.test(u)) return 'us';
+  if(/CSI|차이나|중국|CHINA/.test(u)) return 'cn';
+  if(/NIFTY|인도|INDIA/.test(u)) return 'in';
+  if(/(^|[^0-9])200|코스피|KOSPI|코스닥/.test(u)) return 'kr';
+  return 'stock:기타';
+}
+const PENSION_IDS=['pension','irp','dc'];
+function clsBreakdown(){
+  const tot={}, byAcct={}, sector={}; let all=0;
+  const add=(c,acct,v,sec)=>{ if(!v) return; tot[c]=(tot[c]||0)+v; ((byAcct[c] ||= {})[acct]=(byAcct[c][acct]||0)+v); if(sec) sector[sec]=(sector[sec]||0)+v; all+=v };
+  for(const [id,p] of Object.entries(STATE?.portfolios||{})){
+    for(const x of p.items||[]){ const v=n(x.qty)*epx(x); if(!v) continue; const c=x.cls||autoCls(x);
+      if(c==='mix'){ add('kr',id,v*.4); add('bond_us',id,v*.6) }
+      else if(c.startsWith('stock:')) add('stock',id,v,c.slice(6));
+      else add(c,id,v); }
+    add('cash',id,n(p.cash)+n(p.cashUsd)*n(PRICES?.fx));
+  }
+  return {tot,byAcct,sector,all};
+}
+function renderCls(){
+  const b=clsBreakdown(); if(!b.all){ $('clsList').innerHTML='<p class="empty">계좌 정보가 없습니다.</p>'; return }
+  const pf=STATE.portfolios||{}, nm=id=>esc(pf[id]?.name||id), pc=v=>(v/b.all*100).toFixed(1)+'%';
+  $('clsList').innerHTML=CLS_ORDER.filter(c=>b.tot[c]>0).map(c=>{
+    const v=b.tot[c], acc=Object.entries(b.byAcct[c]).sort((a,b)=>b[1]-a[1]);
+    const pen=acc.filter(([id])=>PENSION_IDS.includes(id)).reduce((a,[,x])=>a+x,0);
+    const sec= c==='stock'? Object.entries(b.sector).sort((a,b)=>b[1]-a[1]) : [];
+    return `<details class="cls"><summary><span class="cn">${CLS_LABEL[c]}</span><span class="cv">${won(v/1e4)} · ${pc(v)}</span>
+      <span class="cb"><i style="width:${Math.min(100,v/b.all*100)}%"></i></span>
+      <span class="cs">연금계좌 ${won(pen/1e4)} (${(pen/v*100).toFixed(0)}%) · 그 외 ${won((v-pen)/1e4)} (${((v-pen)/v*100).toFixed(0)}%)</span></summary>
+      <div class="cd">${acc.map(([id,x])=>`<div><span>${nm(id)}${PENSION_IDS.includes(id)?' <span class="tag">연금</span>':''}</span><span class="num">${won(x/1e4)} · ${(x/v*100).toFixed(0)}%</span></div>`).join('')}
+      ${sec.length? `<div class="sub">섹터 (개별주 안에서 · 전체 자산 대비)</div>`+sec.map(([s,x])=>`<div><span>${esc(s)}</span><span class="num">${won(x/1e4)} · ${(x/v*100).toFixed(0)}% · ${pc(x)}</span></div>`).join(''):''}</div></details>`;
+  }).join('') + `<p class="note" style="margin-top:8px">합계 ${won(b.all/1e4)} (예금·현금 포함)</p>`;
+}
 function renderAsset(){
   if(!STATE) return;
   const ports=Object.entries(STATE.portfolios||{}).sort((a,b)=>(a[1].order??99)-(b[1].order??99));
@@ -1376,6 +1437,7 @@ function renderAsset(){
   const from= RANGE? new Date(Date.now()-RANGE*864e5).toISOString().slice(0,10) : '';
   $('dayChart').innerHTML=dayChartSVG(recs.filter(r=>r.date>=from));
   $('dayNote').textContent=`기록 ${recs.length}일 (${recs[0]?.date||'–'} ~ ${last?.date||'–'}). 엑셀에서 가져온 기록은 주 단위이고, 이후는 평일 장 마감 후 자동으로 쌓입니다. 주황 점은 기간 중 최고치입니다.`;
+  renderCls();
   $('acctList').innerHTML=ports.map(([id,p])=>{
     const v=live[id], pv=prevRec?.accounts?.[id], d= pv!=null? v-pv : null;
     return `<div class="acct"><span class="nm">${esc(p.name||id)}${p.track===false?' <span class="note">· 추이 제외</span>':''}</span><span class="vv"><span class="num">${won(v/1e4)}</span>${d!=null?`<span class="dv num ${d>=0?'pos':'neg'}">${d>=0?'+':''}${won(d/1e4)}</span>`:''}${now&&p.track!==false?`<span class="dv note">${(v/now*100).toFixed(1)}%</span>`:''}</span></div>`;
