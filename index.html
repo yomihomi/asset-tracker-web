@@ -945,7 +945,7 @@ function stCalc(){
   } else {
     sig.className='chip good';
     sig.textContent= e.worst===null? `현재 ${sn(S2[e.act].name)} · 조건에 쓸 지수가 없습니다` : `현재 ${sn(S2[e.act].name)} 유지 · 조건 지수 최대 낙폭 ${e.worst.toFixed(1)}%`;
-    btn.disabled=true; btn.textContent= e.act>=S2.length-1? '마지막 단계입니다':'전환 조건 미충족';
+    btn.disabled=true; btn.textContent= e.act>=S2.length-1? `${sn(S2[e.act].name)} 적용 중 · 마지막 단계`:`${sn(S2[e.act].name)} 적용 중 · 다음 단계 대기`;
   }
   btn.dataset.armed='';
   home.hidden=!homeTxt; home.textContent=homeTxt;
