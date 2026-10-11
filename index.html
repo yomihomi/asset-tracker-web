@@ -1061,8 +1061,8 @@ $('caBtns').addEventListener('click',async e=>{
   $('cashAsk').hidden=true;
   const ok=await rbWrite(doc,`예수금 변경을 ${label} 기록하고 저장했습니다.`); if(!ok) return;
   draft=doc;
-  if(ca==='xfer'&&PF[other]){ const q=clone(PF[other]); q.cash=n(q.cash)-diff;
-    q.deposits=[...(q.deposits||[]),{date:d,amount:-diff,type:'xfer',...(diff>0?{to:cur}:{from:cur})}].slice(-500);
+  if(ca==='xfer'&&PF[other]){ const q=clone(PF[other]); const fr= diff>0? takeCash(q,diff) : (q.cash=n(q.cash)-diff,0);
+    q.deposits=[...(q.deposits||[]),{date:d,amount:-diff,type:'xfer',...(diff>0?{to:cur}:{from:cur}),...(fr?{fromRp:Math.round(fr)}:{})}].slice(-500);
     try{ await putPF(other,q) }catch(err){ msg($('rbMsg'),`상대 계좌(${q.name||other}) 예수금을 바꾸지 못했습니다. 그 계좌에서 직접 고치세요.`,true) } }
 });
 $('rbDeposit').addEventListener('click',async()=>{
@@ -1080,7 +1080,7 @@ $('rbDeposit').addEventListener('click',async()=>{
     : `${PF[from]?.name||from}에서 ${wonF(v)}을 옮겼습니다(저축으로 세지 않음).`);
   if(!ok){ draft.cash=before; draft.deposits=draft.deposits.slice(0,-1); $('rb-cash').value=draft.cash; rbCalc(); return }
   if(type==='xfer'){
-    const src=clone(PF[from]); src.cash=n(src.cash)-v; src.deposits=[...(src.deposits||[]),{date:d,amount:-v,type:'xfer',to:cur}].slice(-500); src.updatedAt=new Date().toISOString();
+    const src=clone(PF[from]); const fr=takeCash(src,v); src.deposits=[...(src.deposits||[]),{date:d,amount:-v,type:'xfer',to:cur,...(fr?{fromRp:Math.round(fr)}:{})}].slice(-500); src.updatedAt=new Date().toISOString();
     try{ await DB.doc('portfolios/'+from).set(src) }catch(e){ msg($('rbMsg'),`보낸 계좌(${src.name||from}) 예수금을 줄이지 못했습니다. 그 계좌에서 예수금을 직접 고치세요.`,true) }
   }
   $('rb-depType').value='new'; $('rb-depFrom').hidden=true; render();
@@ -1638,6 +1638,15 @@ function renderLogs(){
       <div class="lg-a"><button class="btn danger sm" type="button" data-tdel>되돌리기</button></div></div>`).join('')
     : '<p class="empty">아직 매매 기록이 없습니다. 리밸런싱 탭에서 체결 반영하면 여기에 쌓입니다.</p>';
 }
+function takeCash(doc,amt){  // 돌려줌: RP에서 뺀 금액
+  doc.cash=n(doc.cash)-amt; if(doc.cash>=0) return 0;
+  const rp=(doc.items||[]).find(x=>(x.cls||autoCls(x))==='cash'&&x.src==='manual'); if(!rp) return 0;
+  const need=Math.min(-doc.cash, n(rp.qty)*n(rp.price)); rp.price=n(rp.price)-need/(n(rp.qty)||1); doc.cash+=need; return need;
+}
+function giveBack(doc,amt,fromRp){  // 되돌릴 때: RP에서 뺐던 몫은 RP로
+  const r=Math.min(n(fromRp),amt), rp=r? (doc.items||[]).find(x=>(x.cls||autoCls(x))==='cash'&&x.src==='manual') : null;
+  if(rp){ rp.price=n(rp.price)+r/(n(rp.qty)||1); doc.cash=n(doc.cash)+amt-r } else doc.cash=n(doc.cash)+amt;
+}
 function busyAcct(acct){ return dirty&&acct===cur }
 async function putPF(id,doc){ await DB.doc('portfolios/'+id).set({...doc,updatedAt:new Date().toISOString()}) }
 $('depList').addEventListener('click',async e=>{
@@ -1666,8 +1675,8 @@ $('depList').addEventListener('click',async e=>{
       const other=d.amount<0? d.to : d.from, q=PF[other];
       const j=(q?.deposits||[]).findIndex(x=>x.type==='xfer'&&n(x.amount)===-n(d.amount)&&x.date===d.date&&(x.to===acct||x.from===acct));
       if(q&&busyAcct(other)) return msg($('depMsg'),`리밸런싱 탭의 ${q.name||other} 계좌에 저장하지 않은 변경이 있습니다. 먼저 저장하세요.`,true);
-      const a=clone(p); a.cash=n(a.cash)-n(d.amount); a.deposits.splice(idx,1); await putPF(acct,a);
-      if(q&&j>=0){ const b=clone(q); b.cash=n(b.cash)-n(q.deposits[j].amount); b.deposits.splice(j,1); await putPF(other,b) }
+      const a=clone(p); if(n(d.amount)<0) giveBack(a,-n(d.amount),d.fromRp); else a.cash=n(a.cash)-n(d.amount); a.deposits.splice(idx,1); await putPF(acct,a);
+      if(q&&j>=0){ const b=clone(q), e=q.deposits[j]; if(n(e.amount)<0) giveBack(b,-n(e.amount),e.fromRp); else b.cash=n(b.cash)-n(e.amount); b.deposits.splice(j,1); await putPF(other,b) }
       msg($('depMsg'), q&&j>=0? '계좌 간 이동을 양쪽 모두 되돌렸습니다.' : '이 계좌의 이동 기록을 되돌렸습니다. 상대 계좌 기록을 찾지 못해 그쪽 예수금은 직접 확인하세요.', !(q&&j>=0));
     } else {
       const a=clone(p); a.cash=n(a.cash)-n(d.amount); a.deposits.splice(idx,1); await putPF(acct,a);
