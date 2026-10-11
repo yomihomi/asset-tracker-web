@@ -450,7 +450,7 @@ input:disabled{opacity:.75}
       <div id="bdOrders" class="items"></div>
       <button class="btn ghost" type="button" id="bdReset">추천 주문으로 되돌리기</button>
       <p class="toast" id="bdMsg" role="status"></p>
-      <p class="note">배치 원칙: 미국 주식은 연금저축2 → ISA → 일반, 코스피200은 일반 → ISA → 연금저축2, 그 밖의 해외 주식·채권·금은 ISA → 연금저축2 → 일반 순서로 담습니다. 현금 목표는 예수금·RP로 채우고, 일반계좌 매수 대금은 예수금이 모자라면 RP에서 씁니다. 개별주와 달러 예수금·달러 종목(매수 대기 자금)은 묶음에서 뺍니다. 금 현물 계좌는 금 비중에만 넣고, 그 계좌에서는 사거나 팔라는 주문을 내지 않습니다. 입금은 '계좌별'에서 계좌를 골라 하세요.</p>
+      <p class="note">자리 옮기기: 국내 주식형 ETF가 ISA·연금저축2에 있으면, 세금 없이 그 계좌에서 팔고 일반계좌에서 사도록 안내합니다(비워진 자리는 해외 ETF로). 배치 원칙: 미국 주식은 연금저축2 → ISA → 일반, 코스피200은 일반 → ISA → 연금저축2, 그 밖의 해외 주식·채권·금은 ISA → 연금저축2 → 일반 순서로 담습니다. 현금 목표는 예수금·RP로 채우고, 일반계좌 매수 대금은 예수금이 모자라면 RP에서 씁니다. 개별주와 달러 예수금·달러 종목(매수 대기 자금)은 묶음에서 뺍니다. 금 현물 계좌는 금 비중에만 넣고, 그 계좌에서는 사거나 팔라는 주문을 내지 않습니다. 입금은 '계좌별'에서 계좌를 골라 하세요.</p>
     </div>
 
     <div class="card" id="rbCardA">
@@ -1495,13 +1495,23 @@ function bundlePlan(){
       for(const role of ['pension2','isa','stock']){ const m=mem.find(m=>m.role===role); if(!m) continue; const have=HA[t.code]?.[m.id]||0; if(!have) continue;
         const q=Math.min(Math.floor(ex/t.p),Math.floor(have/t.p)); if(q<=0) continue;
         orders.push({acct:m.id,code:t.code,name:t.name,side:'sell',q,p:t.p}); ex-=q*t.p; t.H-=q*t.p; spend[m.id]+=q*t.p; cashAll+=q*t.p } } }
+  const stockM=mem.find(m=>m.role==='stock');
+  if(stockM) for(const t of items){
+    if((PLACE[t.cls]||PLACE_DEF)[0]!=='stock'||!t.p) continue;
+    for(const role of ['isa','pension2']){ const m=mem.find(m=>m.role===role); if(!m) continue;
+      const have=HA[t.code]?.[m.id]||0, keep=Math.min(have,t.T);  // 목표만큼만 옮김
+      const q=Math.min(Math.floor(keep/t.p), Math.floor(spend[stockM.id]/t.p)); if(q<=0) continue;
+      orders.push({acct:m.id,code:t.code,name:t.name,side:'sell',q,p:t.p,reloc:true});
+      orders.push({acct:stockM.id,code:t.code,name:t.name,side:'buy',q,p:t.p,reloc:true});
+      const a=q*t.p; spend[m.id]+=a; spend[stockM.id]-=a; HA[t.code][m.id]-=a; (HA[t.code][stockM.id]=(HA[t.code][stockM.id]||0)+a) } }
   let budget=Math.max(0,cashAll-cashT);  // 현금 목표를 넘는 돈만 매수에 씀
   for(let r=0;r<3;r++) for(const role of ['pension2','isa','stock']){
     const m=mem.find(m=>m.role===role); if(!m) continue;
     const cands=items.filter(t=>t.p>0&&t.T-t.H>=t.p&&((PLACE[t.cls]||PLACE_DEF)[r]===role)).sort((a,b)=>(b.T-b.H)-(a.T-a.H));
     for(const t of cands){ const amt=Math.min(t.T-t.H,spend[m.id],budget); const q=Math.floor(amt/t.p); if(q<=0) continue;
       orders.push({acct:m.id,code:t.code,name:t.name,side:'buy',q,p:t.p}); const a=q*t.p; t.H+=a; spend[m.id]-=a; budget-=a; cashAll-=a } }
-  return {b,mem,model,items,orders,B,cashT,cashAll,otherCls,wCash,reserve:reserve-resLeft};
+  const merged=[]; for(const o of orders){ const e=merged.find(x=>x.acct===o.acct&&x.code===o.code&&x.side===o.side); if(e){ e.q+=o.q; e.reloc=e.reloc||o.reloc } else merged.push({...o}) }
+  return {b,mem,model,items,orders:merged,B,cashT,cashAll,otherCls,wCash,reserve:reserve-resLeft};
 }
 const bkey=o=>`${o.acct}|${o.code}|${o.side}`;
 function renderBundle(){
@@ -1534,7 +1544,7 @@ function renderBundle(){
   $('bdOrders').innerHTML= ords.length? P.mem.filter(m=>by[m.id]).map(m=>`<div class="item"><div class="item-h"><b>${nm(m.id)}</b><span class="note" style="margin-left:auto">${(()=>{const rp=(PF[m.id].items||[]).filter(x=>isCashItem(x)&&isManual(x)).reduce((t,x)=>t+n(x.qty)*n(x.price),0); return rp? `예수금 ${wonF(n(PF[m.id].cash))} + RP ${wonF(rp)}${m.role==='stock'&&P.reserve?` (남겨둘 ${wonF(P.reserve)} 제외)`:''}` : `예수금 ${wonF(n(PF[m.id].cash))}`})()}</span></div>
       ${by[m.id].map(o=>`<div class="ord ${o.side}" data-bk="${esc(bkey(o))}">
         <b style="font-size:14px;grid-column:1/-1">${esc(o.name)}</b>
-        <span class="tag ${o.side==='buy'?'':'edit'}">${o.side==='buy'?'매수':'매도'}</span>
+        <span class="tag ${o.side==='buy'?'':'edit'}">${o.side==='buy'?'매수':'매도'}${o.reloc?' · 자리 옮기기':''}</span>
         <input type="number" inputmode="numeric" step="1" min="0" data-bo="q" value="${n(o.q)}" aria-label="수량"><span class="u">주 ×</span>
         <input type="number" inputmode="numeric" step="any" min="0" data-bo="p" value="${n(o.p)}" aria-label="체결가"><span class="u">원</span>
         <div class="oa-row"><span class="oa num ${o.side}">${o.side==='buy'?'매수':'매도'} 금액 ${wonF(n(o.q)*n(o.p))}</span><button class="btn ghost sm" type="button" data-bap>체결 반영</button></div>
