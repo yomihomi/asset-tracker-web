@@ -450,7 +450,7 @@ input:disabled{opacity:.75}
       <div id="bdOrders" class="items"></div>
       <button class="btn ghost" type="button" id="bdReset">추천 주문으로 되돌리기</button>
       <p class="toast" id="bdMsg" role="status"></p>
-      <p class="note">배치 원칙: 미국 주식은 연금저축2 → ISA → 일반, 코스피200은 일반 → ISA → 연금저축2, 그 밖의 해외 주식·채권·금은 ISA → 연금저축2 → 일반 순서로 담습니다. 현금 목표는 예수금·RP로 채우고, 일반계좌 매수 대금은 예수금이 모자라면 RP에서 씁니다. 개별주와 달러 예수금·달러 종목(매수 대기 자금)은 묶음에서 뺍니다. 입금은 '계좌별'에서 계좌를 골라 하세요.</p>
+      <p class="note">배치 원칙: 미국 주식은 연금저축2 → ISA → 일반, 코스피200은 일반 → ISA → 연금저축2, 그 밖의 해외 주식·채권·금은 ISA → 연금저축2 → 일반 순서로 담습니다. 현금 목표는 예수금·RP로 채우고, 일반계좌 매수 대금은 예수금이 모자라면 RP에서 씁니다. 개별주와 달러 예수금·달러 종목(매수 대기 자금)은 묶음에서 뺍니다. 금 현물 계좌는 금 비중에만 넣고, 그 계좌에서는 사거나 팔라는 주문을 내지 않습니다. 입금은 '계좌별'에서 계좌를 골라 하세요.</p>
     </div>
 
     <div class="card" id="rbCardA">
@@ -1479,7 +1479,9 @@ function bundlePlan(){
   const reserve=Math.max(0,n(b.reserve)); let resLeft=reserve;
   for(const m of mem){ const p=PF[m.id]; spend[m.id]=n(p.cash); cashAll+=n(p.cash); B+=n(p.cash);
     for(const x of p.items||[]){ if(!bdIn(x)) continue; const v=n(x.qty)*epx(x); if(!v) continue; B+=v;
-      const mi=model.find(t=>t.code&&t.code===x.code&&t.cls!=='cash');
+      // 코드가 같은 목표 종목, 없으면 같은 자산군의 목표 종목이 하나뿐일 때 그 종목으로 셈 (예: 실물 금 → 금 ETF 몫)
+      let mi=model.find(t=>t.code&&t.code===x.code&&t.cls!=='cash');
+      if(!mi){ const c=x.cls||autoCls(x), same=model.filter(t=>t.cls===c&&c!=='cash'); if(same.length===1) mi=same[0] }
       if(mi){ H[mi.code]=(H[mi.code]||0)+v; (HA[mi.code] ||= {})[m.id]=(HA[mi.code][m.id]||0)+v }
       else if(isCashItem(x)){ let use=v; if(m.role==='stock'&&x.src==='manual'&&resLeft>0){ const r=Math.min(resLeft,v); resLeft-=r; use-=r; B-=r }
         cashAll+=use; if(x.src==='manual') spend[m.id]+=use }
