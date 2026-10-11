@@ -1799,7 +1799,7 @@ function openApp(){
 let started=false;
 function startApp(){
   if(started){emit('*');renderAsset();return} started=true; DB=STORE;
-  DB.doc('settings/main').onSnapshot(s=>{ if(s.exists){S={...DEF,...s.data()}; fillSettings(); render()} });
+  DB.doc('settings/main').onSnapshot(s=>{ if(s.exists){S={...DEF,...s.data()}; fillSettings(); render(); renderSat()} });
   DB.collection('records').onSnapshot(q=>{
     RECS=q.docs.map(x=>x.data());
     render();
