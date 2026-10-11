@@ -332,7 +332,7 @@ input:disabled{opacity:.75}
     <div class="card">
       <h2>자산군별 비중 (전체 계좌 합산)</h2>
       <div id="clsList"></div>
-      <p class="note">줄을 누르면 계좌별 내역이 펼쳐집니다. 자산군은 종목 이름으로 자동 판단하고, 리밸런싱 탭 종목 카드의 '자산군'에서 바꿀 수 있습니다. 200미국채혼합은 한국 주식 40% · 미국 채권 60%로 나눠 셉니다. 연금계좌 = 연금저축·IRP·DC.</p>
+      <p class="note">줄을 누르면 계좌별 내역이 펼쳐집니다. 자산군은 종목 이름으로 자동 판단하고, 리밸런싱 탭 종목 카드의 '자산군'에서 바꿀 수 있습니다. 200미국채혼합은 한국 주식 40% · 미국 채권 60%로 나눠 셉니다. 연금계좌 = 연금저축·IRP·DC와 이름에 '연금'이 들어간 계좌(예: 연금저축2).</p>
     </div>
   </section>
 
@@ -1395,6 +1395,7 @@ function autoCls(x){
   return 'stock:기타';
 }
 const PENSION_IDS=['pension','irp','dc'];
+const isPen=id=> PENSION_IDS.includes(id) || /연금|IRP|DC|퇴직/i.test(STATE?.portfolios?.[id]?.name||'');  // 연금저축2 같은 추가 연금계좌 포함
 function clsBreakdown(){
   const tot={}, byAcct={}, sector={}; let all=0;
   const add=(c,acct,v,sec)=>{ if(!v) return; tot[c]=(tot[c]||0)+v; ((byAcct[c] ||= {})[acct]=(byAcct[c][acct]||0)+v); if(sec) sector[sec]=(sector[sec]||0)+v; all+=v };
@@ -1412,12 +1413,12 @@ function renderCls(){
   const pf=STATE.portfolios||{}, nm=id=>esc(pf[id]?.name||id), pc=v=>(v/b.all*100).toFixed(1)+'%';
   $('clsList').innerHTML=CLS_ORDER.filter(c=>b.tot[c]>0).map(c=>{
     const v=b.tot[c], acc=Object.entries(b.byAcct[c]).sort((a,b)=>b[1]-a[1]);
-    const pen=acc.filter(([id])=>PENSION_IDS.includes(id)).reduce((a,[,x])=>a+x,0);
+    const pen=acc.filter(([id])=>isPen(id)).reduce((a,[,x])=>a+x,0);
     const sec= c==='stock'? Object.entries(b.sector).sort((a,b)=>b[1]-a[1]) : [];
     return `<details class="cls"><summary><span class="cn">${CLS_LABEL[c]}</span><span class="cv">${won(v/1e4)} · ${pc(v)}</span>
       <span class="cb"><i style="width:${Math.min(100,v/b.all*100)}%"></i></span>
       <span class="cs">연금계좌 ${won(pen/1e4)} (${(pen/v*100).toFixed(0)}%) · 그 외 ${won((v-pen)/1e4)} (${((v-pen)/v*100).toFixed(0)}%)</span></summary>
-      <div class="cd">${acc.map(([id,x])=>`<div><span>${nm(id)}${PENSION_IDS.includes(id)?' <span class="tag">연금</span>':''}</span><span class="num">${won(x/1e4)} · ${(x/v*100).toFixed(0)}%</span></div>`).join('')}
+      <div class="cd">${acc.map(([id,x])=>`<div><span>${nm(id)}${isPen(id)?' <span class="tag">연금</span>':''}</span><span class="num">${won(x/1e4)} · ${(x/v*100).toFixed(0)}%</span></div>`).join('')}
       ${sec.length? `<div class="sub">섹터 (개별주 안에서 · 전체 자산 대비)</div>`+sec.map(([s,x])=>`<div><span>${esc(s)}</span><span class="num">${won(x/1e4)} · ${(x/v*100).toFixed(0)}% · ${pc(x)}</span></div>`).join(''):''}</div></details>`;
   }).join('') + `<p class="note" style="margin-top:8px">합계 ${won(b.all/1e4)} (예금·현금 포함)</p>`;
 }
