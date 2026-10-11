@@ -468,6 +468,10 @@ input:disabled{opacity:.75}
         <select id="rb-depType" aria-label="입금 종류" style="flex:1;min-width:0"><option value="new">새로 들어온 돈 (저축으로 셈)</option><option value="once">일회성 입금 (저축 속도 제외)</option><option value="div">배당금·이자 (투자 수익)</option><option value="xfer">다른 계좌에서 옮긴 돈</option></select>
         <select id="rb-depFrom" aria-label="보낸 계좌" style="flex:1;min-width:0" hidden></select>
       </div>
+      <div class="row">
+        <label style="flex:1;min-width:0" id="rb-depFromSlotBox" hidden>보낸 곳<select id="rb-depFromSlot"></select></label>
+        <label style="flex:1;min-width:0">받는 곳<select id="rb-depTo"></select></label>
+      </div>
       <p class="note" id="rbDepLog"></p>
       <div class="seg" role="group" aria-label="계산 방식">
         <button type="button" id="md-buy" data-md="buy" aria-pressed="true">매수 전용</button>
@@ -1067,27 +1071,32 @@ $('caBtns').addEventListener('click',async e=>{
 });
 $('rbDeposit').addEventListener('click',async()=>{
   if(!draft) return; const v=Math.round(n($('rb-dep').value)), type=$('rb-depType').value, from=$('rb-depFrom').value;
+  const toSlot=$('rb-depTo').value||'cash', fromSlot=$('rb-depFromSlot').value||'cash';
   if(v<=0) return msg($('rbMsg'),'입금액을 입력하세요.',true);
   if(type==='xfer'&&(!from||!PF[from])) return msg($('rbMsg'),'어느 계좌에서 옮긴 돈인지 고르세요.',true);
-  const d=todayStr(), entry={date:d,amount:v,type,cat:catOf(cur)}; if(type==='xfer') entry.from=from;
-  const before=n(draft.cash);
-  draft.cash=before+v; draft.deposits=[...(draft.deposits||[]),entry].slice(-500);
+  if(type==='xfer'&&slotBal(PF[from],fromSlot)<v) return msg($('rbMsg'),`${PF[from].name}의 ${slotName(PF[from],fromSlot)} 잔액(${wonF(slotBal(PF[from],fromSlot))})이 이동할 금액보다 적습니다.`,true);
+  const d=todayStr(), entry={date:d,amount:v,type,cat:catOf(cur),toSlot}; if(type==='xfer'){ entry.from=from; entry.fromSlot=fromSlot }
+  const snap=clone(draft);
+  applySlot(draft,toSlot,v); draft.deposits=[...(draft.deposits||[]),entry].slice(-500);
   ORD={}; $('rb-dep').value=''; $('rb-cash').value=draft.cash; rbCalc();
   const ok=await rbWrite({...draft,updatedAt:new Date().toISOString()},
-    type==='new'? `${wonF(v)}을 예수금에 넣었습니다(저축으로 기록). 종목별 주문 안내를 확인하세요.`
-    : type==='once'? `일회성 입금 ${wonF(v)}을 예수금에 넣었습니다(투자 수익과 저축 속도에서 모두 제외).`
-    : type==='div'? `배당금·이자 ${wonF(v)}을 예수금에 넣었습니다(투자 수익으로 기록, 저축에는 넣지 않음).`
-    : `${PF[from]?.name||from}에서 ${wonF(v)}을 옮겼습니다(저축으로 세지 않음).`);
-  if(!ok){ draft.cash=before; draft.deposits=draft.deposits.slice(0,-1); $('rb-cash').value=draft.cash; rbCalc(); return }
+    type==='new'? `${wonF(v)}을 ${slotName(draft,toSlot)}에 넣었습니다(저축으로 기록). 종목별 주문 안내를 확인하세요.`
+    : type==='once'? `일회성 입금 ${wonF(v)}을 ${slotName(draft,toSlot)}에 넣었습니다(투자 수익과 저축 속도에서 모두 제외).`
+    : type==='div'? `배당금·이자 ${wonF(v)}을 ${slotName(draft,toSlot)}에 넣었습니다(투자 수익으로 기록, 저축에는 넣지 않음).`
+    : `${PF[from]?.name||from} ${slotName(PF[from],fromSlot)}에서 ${slotName(draft,toSlot)}(으)로 ${wonF(v)}을 옮겼습니다(저축으로 세지 않음).`);
+  if(!ok){ draft=snap; rbRenderAll(); return }
   if(type==='xfer'){
-    const src=clone(PF[from]); const fr=takeCash(src,v); src.deposits=[...(src.deposits||[]),{date:d,amount:-v,type:'xfer',to:cur,...(fr?{fromRp:Math.round(fr)}:{})}].slice(-500); src.updatedAt=new Date().toISOString();
+    const src=clone(PF[from]); applySlot(src,fromSlot,-v); src.deposits=[...(src.deposits||[]),{date:d,amount:-v,type:'xfer',to:cur,fromSlot,toSlot}].slice(-500); src.updatedAt=new Date().toISOString();
     try{ await DB.doc('portfolios/'+from).set(src) }catch(e){ msg($('rbMsg'),`보낸 계좌(${src.name||from}) 예수금을 줄이지 못했습니다. 그 계좌에서 예수금을 직접 고치세요.`,true) }
   }
-  $('rb-depType').value='new'; $('rb-depFrom').hidden=true; render();
+  $('rb-depType').value='new'; $('rb-depFrom').hidden=true; $('rb-depFromSlotBox').hidden=true; render(); rbRenderAll();
 });
-$('rb-depType').addEventListener('change',()=>{ $('rb-depFrom').hidden=$('rb-depType').value!=='xfer' });
+$('rb-depType').addEventListener('change',()=>{ const x=$('rb-depType').value==='xfer'; $('rb-depFrom').hidden=!x; $('rb-depFromSlotBox').hidden=!x; fillFromSlot() });
+function fillFromSlot(){ const f=PF[$('rb-depFrom').value]; $('rb-depFromSlot').innerHTML= f? slotOpts(f) : '<option value="cash">보낸 계좌를 먼저 고르세요</option>' }
+$('rb-depFrom').addEventListener('change',fillFromSlot);
 function rbDepRender(){
   if(!draft) return;
+  { const keep=$('rb-depTo').value; $('rb-depTo').innerHTML=slotOpts(draft); if([...$('rb-depTo').options].some(o=>o.value===keep)) $('rb-depTo').value=keep }
   $('rb-depFrom').innerHTML='<option value="">보낸 계좌 선택</option>'+pfList().filter(([id])=>id!==cur).map(([id,p])=>`<option value="${esc(id)}">${esc(p.name||id)}</option>`).join('');
   const last=(draft.deposits||[]).slice(-5).reverse();
   $('rbDepLog').textContent= last.length? '최근 입금: '+last.map(x=>`${x.date.slice(5).replace('-','/')} ${x.amount<0?'−':'+'}${won(Math.abs(x.amount)/1e4)}${x.type==='div'?' (배당·이자)':x.type==='once'?' (일회성)':x.type==='adj'?' (오차 정리)':x.type==='new'&&n(x.amount)<0?' (출금)':x.type==='xfer'?(x.from?` (${PF[x.from]?.name||x.from}에서 이동)`:` (${PF[x.to]?.name||x.to}로 이동)`):''}`).join(' · ') : '아직 이 화면에서 입금한 기록이 없습니다. 새로 들어온 돈은 저축 속도에, 배당금·이자는 투자 수익에 반영됩니다.';
@@ -1638,6 +1647,20 @@ function renderLogs(){
       <div class="lg-a"><button class="btn danger sm" type="button" data-tdel>되돌리기</button></div></div>`).join('')
     : '<p class="empty">아직 매매 기록이 없습니다. 리밸런싱 탭에서 체결 반영하면 여기에 쌓입니다.</p>';
 }
+// 계좌 안의 원화 자리: 'cash' = 원화 예수금, 'item:이름' = 직접 입력 현금성 종목(RP 등)
+function slotsOf(doc){
+  const out=[{k:'cash',label:'원화 예수금',bal:n(doc?.cash)}];
+  for(const x of doc?.items||[]) if((x.cls||autoCls(x))==='cash'&&x.src==='manual') out.push({k:'item:'+(x.code||x.name),label:x.name,bal:n(x.qty)*n(x.price)});
+  return out;
+}
+function slotBal(doc,k){ return slotsOf(doc).find(x=>x.k===k)?.bal ?? 0 }
+function applySlot(doc,k,delta){
+  if(!k||k==='cash'){ doc.cash=n(doc.cash)+delta; return }
+  const id=k.slice(5), it=(doc.items||[]).find(x=>(x.code||x.name)===id);
+  if(it) it.price=n(it.price)+delta/(n(it.qty)||1); else doc.cash=n(doc.cash)+delta;
+}
+const slotName=(doc,k)=> slotsOf(doc).find(x=>x.k===k)?.label || '원화 예수금';
+const slotOpts=doc=>slotsOf(doc).map(x=>`<option value="${esc(x.k)}">${esc(x.label)} (${wonF(x.bal)})</option>`).join('');
 function takeCash(doc,amt){  // 돌려줌: RP에서 뺀 금액
   doc.cash=n(doc.cash)-amt; if(doc.cash>=0) return 0;
   const rp=(doc.items||[]).find(x=>(x.cls||autoCls(x))==='cash'&&x.src==='manual'); if(!rp) return 0;
@@ -1664,7 +1687,7 @@ $('depList').addEventListener('click',async e=>{
   if(e.target.closest('[data-dsave]')){
     const g=k=>row.querySelector(`[data-k="${k}"]`).value, amt=Math.round(n(g('amount'))), date=g('date');
     if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||!amt) return msg($('depMsg'),'날짜와 금액을 확인하세요.',true);
-    const doc=clone(p); doc.cash=n(doc.cash)-n(d.amount)+amt; doc.deposits[idx]={...d,date,type:g('type'),amount:amt};
+    const doc=clone(p); applySlot(doc,d.toSlot||'cash',amt-n(d.amount)); doc.deposits[idx]={...d,date,type:g('type'),amount:amt};
     try{ await putPF(acct,doc); msg($('depMsg'),`입금 기록을 고쳤습니다. ${p.name||acct} 예수금 ${amt-n(d.amount)>=0?'+':'−'}${wonF(Math.abs(amt-n(d.amount)))}`) }catch(err){ msg($('depMsg'),saveErr(err),true) }
     return;
   }
@@ -1675,11 +1698,12 @@ $('depList').addEventListener('click',async e=>{
       const other=d.amount<0? d.to : d.from, q=PF[other];
       const j=(q?.deposits||[]).findIndex(x=>x.type==='xfer'&&n(x.amount)===-n(d.amount)&&x.date===d.date&&(x.to===acct||x.from===acct));
       if(q&&busyAcct(other)) return msg($('depMsg'),`리밸런싱 탭의 ${q.name||other} 계좌에 저장하지 않은 변경이 있습니다. 먼저 저장하세요.`,true);
-      const a=clone(p); if(n(d.amount)<0) giveBack(a,-n(d.amount),d.fromRp); else a.cash=n(a.cash)-n(d.amount); a.deposits.splice(idx,1); await putPF(acct,a);
-      if(q&&j>=0){ const b=clone(q), e=q.deposits[j]; if(n(e.amount)<0) giveBack(b,-n(e.amount),e.fromRp); else b.cash=n(b.cash)-n(e.amount); b.deposits.splice(j,1); await putPF(other,b) }
+      const undo=(doc,e)=>{ if(n(e.amount)<0){ if(e.fromSlot) applySlot(doc,e.fromSlot,-n(e.amount)); else giveBack(doc,-n(e.amount),e.fromRp) } else applySlot(doc,e.toSlot||'cash',-n(e.amount)) };
+      const a=clone(p); undo(a,d); a.deposits.splice(idx,1); await putPF(acct,a);
+      if(q&&j>=0){ const b=clone(q), e=q.deposits[j]; undo(b,e); b.deposits.splice(j,1); await putPF(other,b) }
       msg($('depMsg'), q&&j>=0? '계좌 간 이동을 양쪽 모두 되돌렸습니다.' : '이 계좌의 이동 기록을 되돌렸습니다. 상대 계좌 기록을 찾지 못해 그쪽 예수금은 직접 확인하세요.', !(q&&j>=0));
     } else {
-      const a=clone(p); a.cash=n(a.cash)-n(d.amount); a.deposits.splice(idx,1); await putPF(acct,a);
+      const a=clone(p); applySlot(a,d.toSlot||'cash',-n(d.amount)); a.deposits.splice(idx,1); await putPF(acct,a);
       msg($('depMsg'),`입금 기록을 삭제했습니다. ${p.name||acct} 예수금 ${n(d.amount)>=0?'−':'+'}${wonF(Math.abs(n(d.amount)))}`);
     }
   }catch(err){ msg($('depMsg'),saveErr(err),true) }
