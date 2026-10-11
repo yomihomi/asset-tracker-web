@@ -1459,6 +1459,7 @@ function renderCls(){
 let RBM='acct', BMD='buy', BORD={};
 const PLACE={us:['pension2','isa','stock'], kr:['stock','isa','pension2']}, PLACE_DEF=['isa','pension2','stock'];
 const bdDoc=()=>STATE?.bundles?.core||null;
+const bdName=b=>String(b?.name||'').replace(/프리즘\s*/g,'').trim()||'개인연금 성장형';
 const bdIn=x=>{ const c=x.cls||autoCls(x); return !(c.startsWith('stock:')||x.src==='usdm') };
 const isCashItem=x=>(x.cls||autoCls(x))==='cash';
 function bundlePlan(){
@@ -1497,7 +1498,7 @@ function renderBundle(){
   const P=bundlePlan();
   if(!P){ $('bdInfo').textContent='묶음 설정이 아직 없습니다. Claude에게 묶음 설정을 요청하세요.'; $('bdOrders').innerHTML=''; $('bdCls').innerHTML=''; return }
   const nm=id=>esc(PF[id]?.name||id);
-  $('bdInfo').textContent=`묶음: ${P.mem.map(m=>PF[m.id]?.name||m.id).join(' · ')} · 목표: ${P.b.name||'프리즘 개인연금 성장형'} (${P.model.length}종목)${P.reserve?` · 일반계좌 RP 중 ${wonF(P.reserve)}은 옮길 돈으로 남겨 두고 계산`:''}`;
+  $('bdInfo').textContent=`묶음: ${P.mem.map(m=>PF[m.id]?.name||m.id).join(' · ')} · 목표: ${bdName(P.b)} (${P.model.length}종목)${P.reserve?` · 일반계좌 RP 중 ${wonF(P.reserve)}은 옮길 돈으로 남겨 두고 계산`:''}`;
   if(document.activeElement!==$('bdReserve')) $('bdReserve').value=n(P.b.reserve);
   // 사용자가 고친 주문은 유지
   const ords=P.orders.map(o=>{ const e=BORD[bkey(o)]; return e?.edited? {...o,q:e.q,p:e.p} : o });
@@ -1559,7 +1560,7 @@ $('bdOrders').addEventListener('click',async e=>{
 });
 $('bdReserveSave').addEventListener('click',async()=>{
   const b=bdDoc(); if(!b) return; const v=Math.max(0,Math.round(n($('bdReserve').value)));
-  try{ await DB.doc('bundles/core').set({...b,reserve:v,updatedAt:new Date().toISOString()}); BORD={}; msg($('bdMsg'),`남겨둘 RP를 ${wonF(v)}으로 저장했습니다.`); renderBundle() }
+  try{ await DB.doc('bundles/core').set({...b,name:bdName(b),reserve:v,updatedAt:new Date().toISOString()}); BORD={}; msg($('bdMsg'),`남겨둘 RP를 ${wonF(v)}으로 저장했습니다.`); renderBundle() }
   catch(err){ msg($('bdMsg'),saveErr(err),true) }
 });
 $('bdReset').addEventListener('click',()=>{ BORD={}; renderBundle(); msg($('bdMsg'),'추천 주문으로 되돌렸습니다.') });
