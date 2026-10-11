@@ -1390,6 +1390,7 @@ const STORE={
 };
 
 /* 자동 가격 */
+const isManual=x=>!x?.src||x.src==='manual';  // 가격 출처가 비어 있으면 직접 입력으로 봄
 function autoP(x){ return (x&&x.src&&x.src!=='manual'&&PRICES?.prices?.[x.code]>0)? PRICES.prices[x.code] : null }
 // 달러 직접 입력 종목: 평가액(수량 × 달러 가격 × 환율)을 보여줌
 const usdTag=x=>`평가 ≈ ${wonF(n(x.qty)*epx(x))} = ${n(x.qty).toLocaleString('ko-KR')} × $${n(x.price).toLocaleString('ko-KR')} × 환율 ${n(PRICES?.fx).toLocaleString('ko-KR')}`;
@@ -1483,8 +1484,8 @@ function bundlePlan(){
       let mi=model.find(t=>t.code&&t.code===x.code&&t.cls!=='cash');
       if(!mi){ const c=x.cls||autoCls(x), same=model.filter(t=>t.cls===c&&c!=='cash'); if(same.length===1) mi=same[0] }
       if(mi){ H[mi.code]=(H[mi.code]||0)+v; (HA[mi.code] ||= {})[m.id]=(HA[mi.code][m.id]||0)+v }
-      else if(isCashItem(x)){ let use=v; if(m.role==='stock'&&x.src==='manual'&&resLeft>0){ const r=Math.min(resLeft,v); resLeft-=r; use-=r; B-=r }
-        cashAll+=use; if(x.src==='manual') spend[m.id]+=use }
+      else if(isCashItem(x)){ let use=v; if(m.role==='stock'&&isManual(x)&&resLeft>0){ const r=Math.min(resLeft,v); resLeft-=r; use-=r; B-=r }
+        cashAll+=use; if(isManual(x)) spend[m.id]+=use }
       else { const c=x.cls||autoCls(x); otherCls[c]=(otherCls[c]||0)+v } } }
   const wCash=model.filter(t=>t.cls==='cash').reduce((a,t)=>a+n(t.w),0), cashT=B*wCash/100;
   const items=model.filter(t=>t.cls!=='cash').map(t=>({...t,p:priceOf(t.code),T:B*n(t.w)/100,H:H[t.code]||0}));
@@ -1530,7 +1531,7 @@ function renderBundle(){
   $('bdCls').innerHTML=rows.join('');
   // 계좌별 주문
   const by={}; ords.forEach(o=>(by[o.acct] ||= []).push(o));
-  $('bdOrders').innerHTML= ords.length? P.mem.filter(m=>by[m.id]).map(m=>`<div class="item"><div class="item-h"><b>${nm(m.id)}</b><span class="note" style="margin-left:auto">예수금 ${wonF(n(PF[m.id].cash))}</span></div>
+  $('bdOrders').innerHTML= ords.length? P.mem.filter(m=>by[m.id]).map(m=>`<div class="item"><div class="item-h"><b>${nm(m.id)}</b><span class="note" style="margin-left:auto">${(()=>{const rp=(PF[m.id].items||[]).filter(x=>isCashItem(x)&&isManual(x)).reduce((t,x)=>t+n(x.qty)*n(x.price),0); return rp? `예수금 ${wonF(n(PF[m.id].cash))} + RP ${wonF(rp)}${m.role==='stock'&&P.reserve?` (남겨둘 ${wonF(P.reserve)} 제외)`:''}` : `예수금 ${wonF(n(PF[m.id].cash))}`})()}</span></div>
       ${by[m.id].map(o=>`<div class="ord ${o.side}" data-bk="${esc(bkey(o))}">
         <b style="font-size:14px;grid-column:1/-1">${esc(o.name)}</b>
         <span class="tag ${o.side==='buy'?'':'edit'}">${o.side==='buy'?'매수':'매도'}</span>
@@ -1559,7 +1560,7 @@ $('bdOrders').addEventListener('click',async e=>{
   if(!it){ if(o.side==='sell') return msg($('bdMsg'),'그 계좌에 이 종목이 없습니다.',true); it={name:o.name,code:o.code,src:'kr',qty:0,price:n(o.p),w:0}; (doc.items ||= []).push(it) }
   if(o.side==='buy'){
     const fromCash=Math.min(amt,Math.max(0,n(doc.cash))); doc.cash=n(doc.cash)-fromCash; let need=amt-fromCash;
-    if(need>0){ const rp=doc.items.find(x=>isCashItem(x)&&x.src==='manual'); const rv=rp? n(rp.qty)*n(rp.price):0;
+    if(need>0){ const rp=doc.items.find(x=>isCashItem(x)&&isManual(x)); const rv=rp? n(rp.qty)*n(rp.price):0;
       if(!rp||rv<need){ return msg($('bdMsg'),`${doc.name} 예수금과 RP가 ${wonF(need-rv)} 부족합니다.`,true) }
       rp.price=n(rp.price)-need/(n(rp.qty)||1); fromRp=need }
     it.qty=n(it.qty)+n(o.q);
@@ -1652,7 +1653,7 @@ function renderLogs(){
 // 계좌 안의 원화 자리: 'cash' = 원화 예수금, 'item:이름' = 직접 입력 현금성 종목(RP 등)
 function slotsOf(doc){
   const out=[{k:'cash',label:'원화 예수금',bal:n(doc?.cash)}];
-  for(const x of doc?.items||[]) if((x.cls||autoCls(x))==='cash'&&x.src==='manual') out.push({k:'item:'+(x.code||x.name),label:x.name,bal:n(x.qty)*n(x.price)});
+  for(const x of doc?.items||[]) if((x.cls||autoCls(x))==='cash'&&isManual(x)) out.push({k:'item:'+(x.code||x.name),label:x.name,bal:n(x.qty)*n(x.price)});
   return out;
 }
 function slotBal(doc,k){ return slotsOf(doc).find(x=>x.k===k)?.bal ?? 0 }
@@ -1665,11 +1666,11 @@ const slotName=(doc,k)=> slotsOf(doc).find(x=>x.k===k)?.label || '원화 예수�
 const slotOpts=doc=>slotsOf(doc).map(x=>`<option value="${esc(x.k)}">${esc(x.label)} (${wonF(x.bal)})</option>`).join('');
 function takeCash(doc,amt){  // 돌려줌: RP에서 뺀 금액
   doc.cash=n(doc.cash)-amt; if(doc.cash>=0) return 0;
-  const rp=(doc.items||[]).find(x=>(x.cls||autoCls(x))==='cash'&&x.src==='manual'); if(!rp) return 0;
+  const rp=(doc.items||[]).find(x=>(x.cls||autoCls(x))==='cash'&&isManual(x)); if(!rp) return 0;
   const need=Math.min(-doc.cash, n(rp.qty)*n(rp.price)); rp.price=n(rp.price)-need/(n(rp.qty)||1); doc.cash+=need; return need;
 }
 function giveBack(doc,amt,fromRp){  // 되돌릴 때: RP에서 뺐던 몫은 RP로
-  const r=Math.min(n(fromRp),amt), rp=r? (doc.items||[]).find(x=>(x.cls||autoCls(x))==='cash'&&x.src==='manual') : null;
+  const r=Math.min(n(fromRp),amt), rp=r? (doc.items||[]).find(x=>(x.cls||autoCls(x))==='cash'&&isManual(x)) : null;
   if(rp){ rp.price=n(rp.price)+r/(n(rp.qty)||1); doc.cash=n(doc.cash)+amt-r } else doc.cash=n(doc.cash)+amt;
 }
 function busyAcct(acct){ return dirty&&acct===cur }
@@ -1721,7 +1722,7 @@ $('tradeList').addEventListener('click',async e=>{
   if(neg.length) return msg($('trMsg'),`되돌리면 보유 수량이 음수가 됩니다: ${neg.join(', ')}. 이후 매매를 먼저 되돌리세요.`,true);
   if(del.dataset.armed!=='1'){ del.dataset.armed='1'; del.textContent='한 번 더 누르면 되돌림'; return }
   a.cash=Math.round(n(a.cash)+n(t.buy)-n(t.sell)-n(t.fromRp));
-  if(n(t.fromRp)){ const rp=a.items.find(x=>isCashItem(x)&&x.src==='manual'); if(rp) rp.price=n(rp.price)+n(t.fromRp)/(n(rp.qty)||1); else a.cash+=n(t.fromRp) }
+  if(n(t.fromRp)){ const rp=a.items.find(x=>isCashItem(x)&&isManual(x)); if(rp) rp.price=n(rp.price)+n(t.fromRp)/(n(rp.qty)||1); else a.cash+=n(t.fromRp) }
   a.trades.splice(idx,1);
   try{ await putPF(acct,a); msg($('trMsg'),`${t.date} 매매를 되돌렸습니다. 보유 수량과 예수금이 원래대로 돌아갔습니다.`) }catch(err){ msg($('trMsg'),saveErr(err),true) }
 });
