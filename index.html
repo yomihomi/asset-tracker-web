@@ -172,6 +172,10 @@ input:disabled{opacity:.75}
 .acct .vv{text-align:right;display:flex;flex-direction:column;align-items:flex-end}
 .acct .dv{font-size:12.5px}
 .pos{color:var(--good)} .neg{color:var(--bad)}
+.satbar{position:relative;height:10px;background:var(--bg);border:1px solid var(--line);border-radius:99px;overflow:visible}
+.satbar i{display:block;height:100%;border-radius:99px;background:var(--accent)}
+.satbar i.over{background:var(--warn)}
+.satbar b{position:absolute;top:-4px;width:2px;height:16px;background:var(--ink);border-radius:1px}
 .cls{border-bottom:1px solid var(--line)} .cls:last-child{border-bottom:0}
 .cls summary{list-style:none;cursor:pointer;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 10px;padding:10px 0}
 .cls summary::-webkit-details-marker{display:none}
@@ -236,6 +240,7 @@ input:disabled{opacity:.75}
   <!-- 현황 -->
   <section id="tab-home" class="wrap-inner" style="display:flex;flex-direction:column;gap:14px">
     <div class="banner" id="stHome" hidden></div>
+    <div class="banner" id="satHome" hidden></div>
     <div class="card hero">
       <h2>예상 은퇴 가능 시점</h2>
       <div class="seg" role="group" aria-label="수익률 시나리오">
@@ -328,6 +333,19 @@ input:disabled{opacity:.75}
       <h2>계좌별 현황</h2>
       <div id="acctList"></div>
       <p class="note">평가액은 저장된 보유 수량 × 최신 자동 가격입니다. 전일 대비는 직전 일별 기록과 비교합니다. 예금·현금 계좌는 일별 추이에서 빠집니다.</p>
+    </div>
+    <div class="card" id="satCard">
+      <h2>개별주(위성) 관리</h2>
+      <div class="big num" id="satNow" style="font-size:28px;font-weight:600">–</div>
+      <span class="chip good" id="satChip">–</span>
+      <div class="satbar" aria-hidden="true"><i id="satBar"></i><b id="satCapMark"></b></div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>섹터</th><th>금액</th><th>개별주 안</th><th>목표</th><th>목표까지</th></tr></thead>
+        <tbody id="satTbl"></tbody>
+      </table></div>
+      <p class="note" id="satWait"></p>
+      <details class="more"><summary>종목별 보기</summary><div id="satItems" class="cd" style="padding-top:8px"></div></details>
+      <p class="note">개별주 = 종목 카드의 자산군이 '개별주 · ○○'인 종목(모든 계좌). 상한과 섹터 목표는 설정 탭에서 바꿉니다. 묶음 리밸런싱은 개별주를 사고팔지 않습니다.</p>
     </div>
     <div class="card">
       <h2>자산군별 비중 (전체 계좌 합산)</h2>
@@ -544,6 +562,13 @@ input:disabled{opacity:.75}
           <label class="full">저축 속도 계산 기간 (최근 개월)<input type="number" inputmode="numeric" id="s-paceMonths" min="1" max="36"></label>
         </fieldset>
         <fieldset>
+          <legend>개별주(위성)</legend>
+          <label>상한 (전체 금융자산 대비 %)<input type="number" inputmode="decimal" id="s-satCap" step="any"></label>
+          <label>반도체 목표 (개별주 안 %)<input type="number" inputmode="decimal" id="s-satSemi" step="any"></label>
+          <label>바이오 목표 (%)<input type="number" inputmode="decimal" id="s-satBio" step="any"></label>
+          <label>AI 목표 (%)<input type="number" inputmode="decimal" id="s-satAI" step="any"></label>
+        </fieldset>
+        <fieldset>
           <legend>수익률·물가 (연 %)</legend>
           <label>물가상승률<input type="number" inputmode="decimal" id="s-infl" step="any"></label>
           <label>보수 시나리오 차감 (%p)<input type="number" inputmode="decimal" id="s-consDelta" step="any"></label>
@@ -580,7 +605,7 @@ input:disabled{opacity:.75}
 <script>
 const ACC=[['pension','연금저축'],['irp','IRP'],['dc','DC'],['isa','ISA'],['stock','일반계좌'],['gold','금'],['cash','예금·현금']];
 // 실제 값은 암호화된 settings 에서 불러옵니다. 여기는 공개 코드이므로 일반적인 기본값만 둡니다.
-const DEF={birthYear:1985,birthMonth:1,targetAge:60,endAge:95,spend:300,nps:100,npsAge:65,infl:2.5,preR:5,postR:4,consDelta:1,pensionMonthly:0,dcAnnual:0,paceMonths:12};
+const DEF={birthYear:1985,birthMonth:1,targetAge:60,endAge:95,spend:300,nps:100,npsAge:65,infl:2.5,preR:5,postR:4,consDelta:1,pensionMonthly:0,dcAnnual:0,paceMonths:12,satCap:15,satSemi:70,satBio:30,satAI:0};
 let S={...DEF}, RECS=[], SC='base', DB=null, editing=null, PV='all';
 const $=id=>document.getElementById(id);
 const n=v=>{const x=Number(v);return Number.isFinite(x)?x:0};
@@ -1590,6 +1615,28 @@ document.querySelectorAll('[data-bmd]').forEach(b=>b.addEventListener('click',()
 document.querySelectorAll('[data-rbm]').forEach(b=>b.addEventListener('click',()=>{ RBM=b.dataset.rbm; document.querySelectorAll('[data-rbm]').forEach(x=>x.setAttribute('aria-pressed',x===b)); renderBundle(); try{localStorage.setItem('rbm',RBM)}catch{} }));
 try{ if(localStorage.getItem('rbm')==='bundle'){ RBM='bundle'; document.querySelectorAll('[data-rbm]').forEach(x=>x.setAttribute('aria-pressed',x.dataset.rbm==='bundle')) } }catch{}
 
+function renderSat(){
+  if(!STATE) return;
+  let total=0, sat=0, wait=0; const sec={}, list=[];
+  for(const [id,p] of Object.entries(STATE.portfolios||{})){
+    total+=acctValue(p); wait+=n(p.cashUsd)*n(PRICES?.fx);
+    for(const x of p.items||[]){ const v=n(x.qty)*epx(x); if(!v) continue; const c=x.cls||autoCls(x);
+      if(x.src==='usdm'&&!c.startsWith('stock:')) { wait+=v; continue }
+      if(!c.startsWith('stock:')) continue; const k=c.slice(6); sec[k]=(sec[k]||0)+v; sat+=v; list.push({acct:p.name||id,name:x.name,k,v}) } }
+  if(!total) return;
+  const cap=n(S.satCap)||15, capV=total*cap/100, pctS=sat/total*100, over=sat-capV;
+  $('satNow').textContent=`${won(sat/1e4)} · ${pctS.toFixed(1)}%`;
+  const chip=$('satChip');
+  if(over>0){ chip.className='chip '+(pctS>cap*1.2?'bad':'warn'); chip.textContent=`상한 ${cap}%(${won(capV/1e4)})보다 ${won(over/1e4)} 초과` }
+  else { chip.className='chip good'; chip.textContent=`상한 ${cap}%까지 ${won(-over/1e4)} 더 살 수 있음` }
+  const scale=Math.max(pctS,cap)*1.15; $('satBar').style.width=Math.min(100,pctS/scale*100)+'%'; $('satBar').className=over>0?'over':''; $('satCapMark').style.left=`calc(${cap/scale*100}% - 1px)`;
+  const T={'반도체':n(S.satSemi),'바이오':n(S.satBio),'AI':n(S.satAI)}, keys=[...new Set([...Object.keys(T),...Object.keys(sec)])];
+  $('satTbl').innerHTML=keys.map(k=>{ const v=sec[k]||0, t=T[k]??0, gap=sat*t/100-v;
+    return `<tr><td>${esc(k)}</td><td class="num">${won(v/1e4)}</td><td class="num">${sat?(v/sat*100).toFixed(0):0}%</td><td class="num">${t}%</td><td class="num ${Math.abs(gap)<1e5?'':gap>0?'pos':'neg'}">${Math.abs(gap)<1e5?'맞음':(gap>0?'+':'−')+won(Math.abs(gap)/1e4)}</td></tr>` }).join('');
+  $('satWait').textContent= wait>0? `달러 대기 자금 ${won(wait/1e4)}을 모두 개별주로 사면 ${won((sat+wait)/1e4)} · ${((sat+wait)/total*100).toFixed(1)}% (상한 ${cap}% 대비 ${sat+wait>capV?won((sat+wait-capV)/1e4)+' 초과':won((capV-sat-wait)/1e4)+' 여유'})` : '';
+  $('satItems').innerHTML=list.sort((a,b)=>b.v-a.v).map(x=>`<div><span>${esc(x.name)} <span class="note">· ${esc(x.k)} · ${esc(x.acct)}</span></span><span class="num">${won(x.v/1e4)} · ${(x.v/total*100).toFixed(1)}%</span></div>`).join('')||'<p class="note">개별주가 없습니다.</p>';
+  const hb=$('satHome'); hb.hidden=!(over>0); if(over>0) hb.textContent=`개별주가 전체의 ${pctS.toFixed(1)}%로, 상한 ${cap}%보다 ${won(over/1e4)} 많습니다. 자산 탭의 위성 관리에서 확인하세요.`;
+}
 function renderAsset(){
   if(!STATE) return;
   const ports=Object.entries(STATE.portfolios||{}).sort((a,b)=>(a[1].order??99)-(b[1].order??99));
@@ -1606,7 +1653,7 @@ function renderAsset(){
   const from= RANGE? new Date(Date.now()-RANGE*864e5).toISOString().slice(0,10) : '';
   $('dayChart').innerHTML=dayChartSVG(recs.filter(r=>r.date>=from));
   $('dayNote').textContent=`기록 ${recs.length}일 (${recs[0]?.date||'–'} ~ ${last?.date||'–'}). 엑셀에서 가져온 기록은 주 단위이고, 이후는 평일 장 마감 후 자동으로 쌓입니다. 주황 점은 기간 중 최고치입니다.`;
-  renderCls();
+  renderCls(); renderSat();
   $('acctList').innerHTML=ports.map(([id,p])=>{
     const v=live[id], pv=prevRec?.accounts?.[id], d= pv!=null? v-pv : null;
     return `<div class="acct"><span class="nm">${esc(p.name||id)}${p.track===false?' <span class="note">· 추이 제외</span>':''}</span><span class="vv"><span class="num">${won(v/1e4)}</span>${d!=null?`<span class="dv num ${d>=0?'pos':'neg'}">${d>=0?'+':''}${won(d/1e4)}</span>`:''}${now&&p.track!==false?`<span class="dv note">${(v/now*100).toFixed(1)}%</span>`:''}</span></div>`;
