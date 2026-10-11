@@ -147,6 +147,12 @@ label.chk input{width:auto;accent-color:var(--accent)}
 .idx.off{opacity:.55}
 .idx .nm input.use{width:auto;margin:0 6px 0 0;vertical-align:-2px;accent-color:var(--accent)}
 .idx .dd.warn{color:var(--warn)} .idx .dd.bad{color:var(--bad)}
+.sig{display:flex;flex-direction:column;gap:8px}
+.sig > div{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--line);border-radius:10px}
+.sig .nm{font-size:13.5px;font-weight:600;display:flex;flex-direction:column;gap:2px;min-width:0}
+.sig .nm .note{font-weight:400}
+.sig .v{font-family:var(--font-num);font-size:16px;font-weight:600;text-align:right;white-space:nowrap}
+.sig .v.warn{color:var(--warn)} .sig .v.bad{color:var(--bad)} .sig .v.good{color:var(--good)}
 details.more{border-top:1px solid var(--line);padding-top:10px}
 details.more summary{cursor:pointer;font-size:13.5px;color:var(--muted)}
 .more-in{display:flex;flex-direction:column;gap:10px;padding-top:10px}
@@ -243,6 +249,7 @@ input:disabled{opacity:.75}
     <div class="banner" id="stHome" hidden></div>
     <div class="banner" id="satHome" hidden></div>
     <div class="banner" id="remHome" hidden></div>
+    <div class="banner" id="sigHome" hidden></div>
     <div class="card hero">
       <h2>예상 은퇴 가능 시점</h2>
       <div class="seg" role="group" aria-label="수익률 시나리오">
@@ -300,6 +307,25 @@ input:disabled{opacity:.75}
       </div>
       <div id="histChart" role="img" aria-label="월별 금융자산 추이"></div>
       <p class="note" id="realNote"></p>
+    </div>
+
+    <div class="card" id="sigCard">
+      <h2>시장 경고 신호</h2>
+      <span class="chip warn" id="sigChip">불러오는 중</span>
+      <div class="sig" id="sigList"></div>
+      <details class="more"><summary>신용매수 · 빅테크 투자 입력</summary>
+        <div class="lg-ed" style="padding-top:8px">
+          <label>신용매수 기준 월<input type="month" id="sg-m"></label>
+          <label>잔고 (조 달러)<input type="number" inputmode="decimal" step="any" id="sg-v" placeholder="1.45"></label>
+          <button class="btn sm" type="button" id="sgSaveM" style="grid-column:1/-1">신용매수 저장</button>
+          <label>빅테크 실적 분기<input type="text" id="sg-q" placeholder="2026-Q3" maxlength="7"></label>
+          <label>투자 전망<select id="sg-dir"><option value="up">상향</option><option value="flat">유지</option><option value="down">하향</option></select></label>
+          <label style="grid-column:1/-1">메모<input type="text" id="sg-note" maxlength="120"></label>
+          <button class="btn sm" type="button" id="sgSaveC" style="grid-column:1/-1">빅테크 저장</button>
+        </div>
+      </details>
+      <p class="toast" id="sigMsg"></p>
+      <p class="note">AI 투자 사이클이 꺾이는지 보는 신호입니다. 셋 다 켜지면 주가와 금리가 함께 내려가는 국면으로 넘어가는 신호로 봅니다. BBB 스프레드는 평일 자동(FRED), 신용매수는 FINRA 발표(매월 중순), 빅테크 투자는 실적 발표(1·4·7·10월 말) 때 입력하세요.</p>
     </div>
 
     <div class="card" id="remCard">
@@ -1670,6 +1696,50 @@ $('remForm').addEventListener('submit',e=>{
   if(!r.date||!r.title) return;
   putRem([...REM,r],`'${r.title}' 일정을 추가했습니다.`).then(()=>{ $('rm-title').value=''; $('rm-note').value='' });
 });
+/* 시장 경고 신호 */
+let SIG=null;
+// 저장된 값이 없을 때 쓰는 공개 시장 자료 (FINRA 신용매수 잔고, 조 달러 · 빅테크 2분기 실적)
+const SIG_SEED={margin:[{m:'2026-06',v:1.502},{m:'2026-07',v:1.417},{m:'2026-08',v:1.454}],capex:{q:'2026-Q2',dir:'up',note:'4사 2026년 합계 약 7,200억~7,450억 달러로 상향'}};
+const SIG_DIR={up:'상향',flat:'유지',down:'하향'};
+const monthsAgo=m=>{const d=new Date(); return d.getFullYear()*12+d.getMonth()-ym(m)};
+function sigEval(){
+  const sg=SIG||SIG_SEED, out=[], b=PRICES?.signals?.bbb;
+  if(b){ const lv= b.cur>=1.5?'bad': (b.cur>=1.3||b.chg20>=0.25)?'warn':'good';
+    out.push({nm:'BBB 회사채 스프레드',sub:`자동 ${md(b.date)}${b.stale?' (조회 실패, 직전 값)':''} · 20일 ${b.chg20>=0?'+':''}${b.chg20.toFixed(2)}%p · 1년 ${b.lo.toFixed(2)}~${b.hi.toFixed(2)}%`,v:b.cur.toFixed(2)+'%',lv}) }
+  else out.push({nm:'BBB 회사채 스프레드',sub:'다음 자동 조회(평일 16:10) 후 표시됩니다.',v:'–',lv:''});
+  const M=[...(sg.margin||[])].sort((a,b)=>a.m<b.m?-1:1), last=M.at(-1);
+  if(last){ const pk=Math.max(...M.map(x=>n(x.v))), dd=(n(last.v)/pk-1)*100, pv=M.at(-2), mm=pv?(n(last.v)/n(pv.v)-1)*100:0;
+    const lv= dd<=-15?'bad': (dd<=-8||mm<=-5)?'warn':'good', old=monthsAgo(last.m)>2;
+    out.push({nm:'신용매수 잔고',sub:`${last.m.replace('-','.')} · 전월 ${mm>=0?'+':''}${mm.toFixed(1)}% · 기록 최고 대비 ${dd.toFixed(1)}%${old?' · 새 값 입력 필요':''}`,v:`${n(last.v).toFixed(2)}조$`,lv}) }
+  else out.push({nm:'신용매수 잔고',sub:'아래에서 입력하세요.',v:'–',lv:''});
+  const c=sg.capex;
+  if(c?.dir) out.push({nm:'빅테크 투자 전망',sub:`${esc(c.q)} 실적${c.note?' · '+esc(c.note):''}`,v:SIG_DIR[c.dir]||'–',lv:c.dir==='down'?'bad':c.dir==='flat'?'warn':'good'});
+  else out.push({nm:'빅테크 투자 전망',sub:'아래에서 입력하세요.',v:'–',lv:''});
+  return out;
+}
+function renderSig(){
+  const L=sigEval(), bad=L.filter(x=>x.lv==='bad').length, warn=L.filter(x=>x.lv==='warn').length;
+  $('sigList').innerHTML=L.map(x=>`<div><span class="nm">${x.nm}<span class="note">${x.sub}</span></span><span class="v ${x.lv}">${x.v}</span></div>`).join('');
+  const chip=$('sigChip');
+  chip.className='chip '+(bad>=2?'bad':bad||warn?'warn':'good');
+  chip.textContent= bad===3?'3개 모두 켜짐 · 함께 하락 국면 신호': bad? `경고 ${bad}개${warn?` · 주의 ${warn}개`:''}`: warn? `주의 ${warn}개`:'조용함 · 사이클 진행 중';
+  const hb=$('sigHome'); hb.hidden=bad<2; if(bad>=2) hb.textContent=`시장 경고 신호 ${bad}개가 켜졌습니다 (${L.filter(x=>x.lv==='bad').map(x=>x.nm).join(', ')}). 현황 탭 아래에서 확인하세요.`;
+  const sg=SIG||SIG_SEED; if(!$('sg-q').value&&sg.capex){ $('sg-q').value=sg.capex.q||''; $('sg-dir').value=sg.capex.dir||'up'; $('sg-note').value=sg.capex.note||'' }
+}
+async function putSig(next,ok){
+  try{ await DB.doc('signals/main').set({...next,updatedAt:new Date().toISOString()}); msg($('sigMsg'),ok) }catch(e){ msg($('sigMsg'),saveErr(e),true) }
+}
+$('sgSaveM').addEventListener('click',()=>{
+  const m=$('sg-m').value, v=n($('sg-v').value);
+  if(!/^\d{4}-\d{2}$/.test(m)||!(v>0)) return msg($('sigMsg'),'월과 잔고(조 달러)를 입력하세요.',true);
+  const sg=clone(SIG||SIG_SEED), M=(sg.margin||[]).filter(x=>x.m!==m).concat({m,v}).sort((a,b)=>a.m<b.m?-1:1).slice(-36);
+  putSig({...sg,margin:M},`${m} 신용매수 잔고 ${v}조 달러를 저장했습니다.`).then(()=>{ $('sg-v').value='' });
+});
+$('sgSaveC').addEventListener('click',()=>{
+  const q=$('sg-q').value.trim().toUpperCase();
+  if(!/^\d{4}-Q[1-4]$/.test(q)) return msg($('sigMsg'),'분기를 2026-Q3 형식으로 입력하세요.',true);
+  putSig({...clone(SIG||SIG_SEED),capex:{q,dir:$('sg-dir').value,note:$('sg-note').value.trim()}},`${q} 빅테크 투자 전망(${SIG_DIR[$('sg-dir').value]})을 저장했습니다.`);
+});
 function renderSat(){
   if(!STATE) return;
   let total=0, sat=0, wait=0; const sec={}, list=[];
@@ -1861,6 +1931,7 @@ function startApp(){
   });
   DB.collection('bundles').onSnapshot(()=>renderBundle());
   DB.doc('reminders/main').onSnapshot(s=>{ REM=s.exists?(s.data().items||[]):[]; renderRem() });
+  DB.doc('signals/main').onSnapshot(s=>{ SIG=s.exists?s.data():null; renderSig() });
   DB.doc('strategy/main').onSnapshot(s=>{ ST=s.exists?s.data():null; stIdx=clone(ST?.indices||[]); stRenderAll(); if(!dirty&&draft) rbRenderAll() });
   DB.collection('portfolios').onSnapshot(q=>{
     PF={}; q.docs.forEach(x=>PF[x.id]=x.data());
