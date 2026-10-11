@@ -1479,7 +1479,9 @@ function bundlePlan(){
   const reserve=Math.max(0,n(b.reserve)); let resLeft=reserve;
   for(const m of mem){ const p=PF[m.id]; spend[m.id]=n(p.cash); cashAll+=n(p.cash); B+=n(p.cash);
     for(const x of p.items||[]){ if(!bdIn(x)) continue; const v=n(x.qty)*epx(x); if(!v) continue; B+=v;
-      const mi=model.find(t=>t.code&&t.code===x.code&&t.cls!=='cash');
+      // 코드가 같은 목표 종목, 없으면 같은 자산군의 목표 종목이 하나뿐일 때 그 종목으로 셈 (예: 실물 금 → 금 ETF 몫)
+      let mi=model.find(t=>t.code&&t.code===x.code&&t.cls!=='cash');
+      if(!mi){ const c=x.cls||autoCls(x), same=model.filter(t=>t.cls===c&&c!=='cash'); if(same.length===1) mi=same[0] }
       if(mi){ H[mi.code]=(H[mi.code]||0)+v; (HA[mi.code] ||= {})[m.id]=(HA[mi.code][m.id]||0)+v }
       else if(isCashItem(x)){ let use=v; if(m.role==='stock'&&x.src==='manual'&&resLeft>0){ const r=Math.min(resLeft,v); resLeft-=r; use-=r; B-=r }
         cashAll+=use; if(x.src==='manual') spend[m.id]+=use }
