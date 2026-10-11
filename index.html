@@ -1459,7 +1459,7 @@ function renderCls(){
 let RBM='acct', BMD='buy', BORD={};
 const PLACE={us:['pension2','isa','stock'], kr:['stock','isa','pension2']}, PLACE_DEF=['isa','pension2','stock'];
 const bdDoc=()=>STATE?.bundles?.core||null;
-const bdName=b=>String(b?.name||'').replace(/프리즘\s*/g,'').trim()||'개인연금 성장형';
+const bdName=b=>String(b?.name||'').trim()||'개인연금 성장형';
 const bdIn=x=>{ const c=x.cls||autoCls(x); return !(c.startsWith('stock:')||x.src==='usdm') };
 const isCashItem=x=>(x.cls||autoCls(x))==='cash';
 function bundlePlan(){
