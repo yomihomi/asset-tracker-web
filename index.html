@@ -421,7 +421,39 @@ input:disabled{opacity:.75}
       </details>
     </div>
 
-    <div class="card">
+    <div class="seg" role="group" aria-label="리밸런싱 방식" id="rbModeSeg">
+      <button type="button" data-rbm="acct" aria-pressed="true">계좌별</button>
+      <button type="button" data-rbm="bundle" aria-pressed="false">묶음 (연금저축2·ISA·일반)</button>
+    </div>
+
+    <div class="card" id="bdCard" hidden>
+      <h2>계좌 묶음 리밸런싱</h2>
+      <p class="note" id="bdInfo">묶음 설정을 불러오는 중입니다.</p>
+      <div class="row">
+        <label style="flex:2;min-width:0">옮길 예정이라 남겨둘 일반계좌 RP (원)<input type="number" inputmode="numeric" step="any" id="bdReserve"></label>
+        <button class="btn ghost sm" type="button" id="bdReserveSave" style="align-self:flex-end">저장</button>
+      </div>
+      <div class="seg" role="group" aria-label="계산 방식">
+        <button type="button" data-bmd="buy" aria-pressed="true">매수 전용</button>
+        <button type="button" data-bmd="full" aria-pressed="false">전체 리밸런싱</button>
+      </div>
+      <div class="kv">
+        <div><span class="k">묶음 총액</span><span class="v num" id="bdTot">–</span></div>
+        <div><span class="k">매수 합계</span><span class="v num" id="bdBuy">–</span></div>
+        <div><span class="k">매도 합계</span><span class="v num" id="bdSell">–</span></div>
+        <div><span class="k">매매 후 현금 (목표)</span><span class="v num" id="bdCash">–</span></div>
+      </div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>자산군</th><th>현재</th><th>목표</th><th>주문 후</th></tr></thead>
+        <tbody id="bdCls"></tbody>
+      </table></div>
+      <div id="bdOrders" class="items"></div>
+      <button class="btn ghost" type="button" id="bdReset">추천 주문으로 되돌리기</button>
+      <p class="toast" id="bdMsg" role="status"></p>
+      <p class="note">배치 원칙: 미국 주식은 연금저축2 → ISA → 일반, 코스피200은 일반 → ISA → 연금저축2, 그 밖의 해외 주식·채권·금은 ISA → 연금저축2 → 일반 순서로 담습니다. 현금 목표는 예수금·RP로 채우고, 일반계좌 매수 대금은 예수금이 모자라면 RP에서 씁니다. 개별주와 달러 예수금·달러 종목(매수 대기 자금)은 묶음에서 뺍니다. 입금은 '계좌별'에서 계좌를 골라 하세요.</p>
+    </div>
+
+    <div class="card" id="rbCardA">
       <h2>입금 리밸런싱</h2>
       <div class="seg wrap-seg" id="pfSeg" role="group" aria-label="계좌"></div>
       <fieldset>
@@ -452,13 +484,13 @@ input:disabled{opacity:.75}
       <p class="note" id="rbWsum"></p>
     </div>
 
-    <div class="card">
+    <div class="card" id="rbCardB">
       <h2>종목별 주문</h2>
       <div id="rbItems" class="items"><p class="empty">계좌 정보를 불러오는 중입니다.</p></div>
       <button class="btn ghost" type="button" id="rbAddItem">종목 추가</button>
     </div>
 
-    <div class="card">
+    <div class="card" id="rbCardC">
       <h2>저장과 반영</h2>
       <div class="row">
         <button class="btn" type="button" id="rbSave">변경 저장</button>
@@ -1377,9 +1409,9 @@ function dayChartSVG(rows){
   return s+'</svg>';
 }
 // 자산군 분류: 종목 이름으로 자동 판단(공개 코드에 보유 종목을 적지 않기 위해), 종목 카드에서 직접 지정 가능
-const CLS_OPTS=[['','자동'],['us','미국 주식'],['kr','한국 주식 (지수)'],['cn','중국 주식'],['in','인도 주식'],['stock:반도체','개별주 · 반도체'],['stock:바이오','개별주 · 바이오'],['stock:AI','개별주 · AI'],['stock:기타','개별주 · 기타'],['gold','금'],['bond_us','미국 채권'],['bond_kr','국내 채권'],['mix','주식·채권 혼합 (한국주식 40 / 미국채 60)'],['cash','현금성'],['etc','기타']];
-const CLS_LABEL={us:'미국 주식',kr:'한국 주식 (지수)',cn:'중국 주식',in:'인도 주식',stock:'개별주',gold:'금',bond_us:'미국 채권',bond_kr:'국내 채권',cash:'현금성',etc:'기타'};
-const CLS_ORDER=['us','kr','cn','in','stock','gold','bond_us','bond_kr','cash','etc'];
+const CLS_OPTS=[['','자동'],['us','미국 주식'],['kr','한국 주식 (지수)'],['cn','중국 주식'],['in','인도 주식'],['jp','일본 주식'],['stock:반도체','개별주 · 반도체'],['stock:바이오','개별주 · 바이오'],['stock:AI','개별주 · AI'],['stock:기타','개별주 · 기타'],['gold','금'],['bond_us','미국 채권'],['bond_kr','국내 채권'],['mix','주식·채권 혼합 (한국주식 40 / 미국채 60)'],['cash','현금성'],['etc','기타']];
+const CLS_LABEL={us:'미국 주식',kr:'한국 주식 (지수)',cn:'중국 주식',in:'인도 주식',jp:'일본 주식',stock:'개별주',gold:'금',bond_us:'미국 채권',bond_kr:'국내 채권',cash:'현금성',etc:'기타'};
+const CLS_ORDER=['us','kr','jp','cn','in','stock','gold','bond_us','bond_kr','cash','etc'];
 const clsName=c=> c.startsWith('stock:')? `개별주 · ${c.slice(6)}` : c==='mix'? '혼합' : CLS_LABEL[c]||c;
 function autoCls(x){
   const nm=String(x.name||'').replace(/\s/g,''), u=nm.toUpperCase();
@@ -1389,6 +1421,7 @@ function autoCls(x){
   if(/미국채|미국\d+년|美國債|TREASURY/.test(u)||(nm.includes('미국')&&nm.includes('국채'))) return 'bond_us';
   if(/국고채|국채|통안채|회사채|채권/.test(nm)) return 'bond_kr';
   if(/S&P|S＆P|나스닥|NASDAQ|다우|미국/.test(u)) return 'us';
+  if(/니케이|NIKKEI|일본|JAPAN|TOPIX/.test(u)) return 'jp';
   if(/CSI|차이나|중국|CHINA/.test(u)) return 'cn';
   if(/NIFTY|인도|INDIA/.test(u)) return 'in';
   if(/(^|[^0-9])200|코스피|KOSPI|코스닥/.test(u)) return 'kr';
@@ -1422,6 +1455,118 @@ function renderCls(){
       ${sec.length? `<div class="sub">섹터 (개별주 안에서 · 전체 자산 대비)</div>`+sec.map(([s,x])=>`<div><span>${esc(s)}</span><span class="num">${won(x/1e4)} · ${(x/v*100).toFixed(0)}% · ${pc(x)}</span></div>`).join(''):''}</div></details>`;
   }).join('') + `<p class="note" style="margin-top:8px">합계 ${won(b.all/1e4)} (예금·현금 포함)</p>`;
 }
+/* ---------- 계좌 묶음 리밸런싱 ---------- */
+let RBM='acct', BMD='buy', BORD={};
+const PLACE={us:['pension2','isa','stock'], kr:['stock','isa','pension2']}, PLACE_DEF=['isa','pension2','stock'];
+const bdDoc=()=>STATE?.bundles?.core||null;
+const bdIn=x=>{ const c=x.cls||autoCls(x); return !(c.startsWith('stock:')||x.src==='usdm') };
+const isCashItem=x=>(x.cls||autoCls(x))==='cash';
+function bundlePlan(){
+  const b=bdDoc(); if(!b) return null;
+  const mem=(b.members||[]).filter(m=>PF[m.id]), model=(b.model||[]).map(t=>({...t,cls:t.cls||autoCls(t)}));
+  const priceOf=code=>{ if(PRICES?.prices?.[code]>0) return PRICES.prices[code]; for(const m of mem){ const x=(PF[m.id].items||[]).find(y=>y.code===code); if(x&&epx(x)>0) return epx(x) } return 0 };
+  let B=0, cashAll=0; const H={}, HA={}, spend={}, otherCls={};
+  const reserve=Math.max(0,n(b.reserve)); let resLeft=reserve;
+  for(const m of mem){ const p=PF[m.id]; spend[m.id]=n(p.cash); cashAll+=n(p.cash); B+=n(p.cash);
+    for(const x of p.items||[]){ if(!bdIn(x)) continue; const v=n(x.qty)*epx(x); if(!v) continue; B+=v;
+      const mi=model.find(t=>t.code&&t.code===x.code&&t.cls!=='cash');
+      if(mi){ H[mi.code]=(H[mi.code]||0)+v; (HA[mi.code] ||= {})[m.id]=(HA[mi.code][m.id]||0)+v }
+      else if(isCashItem(x)){ let use=v; if(m.role==='stock'&&x.src==='manual'&&resLeft>0){ const r=Math.min(resLeft,v); resLeft-=r; use-=r; B-=r }
+        cashAll+=use; if(x.src==='manual') spend[m.id]+=use }
+      else { const c=x.cls||autoCls(x); otherCls[c]=(otherCls[c]||0)+v } } }
+  const wCash=model.filter(t=>t.cls==='cash').reduce((a,t)=>a+n(t.w),0), cashT=B*wCash/100;
+  const items=model.filter(t=>t.cls!=='cash').map(t=>({...t,p:priceOf(t.code),T:B*n(t.w)/100,H:H[t.code]||0}));
+  const orders=[];
+  if(BMD==='full'){ // 넘치는 종목: 세금 없는 연금저축2·ISA부터 매도
+    for(const t of items){ let ex=t.H-t.T; if(!t.p||ex<t.p) continue;
+      for(const role of ['pension2','isa','stock']){ const m=mem.find(m=>m.role===role); if(!m) continue; const have=HA[t.code]?.[m.id]||0; if(!have) continue;
+        const q=Math.min(Math.floor(ex/t.p),Math.floor(have/t.p)); if(q<=0) continue;
+        orders.push({acct:m.id,code:t.code,name:t.name,side:'sell',q,p:t.p}); ex-=q*t.p; t.H-=q*t.p; spend[m.id]+=q*t.p; cashAll+=q*t.p } } }
+  let budget=Math.max(0,cashAll-cashT);  // 현금 목표를 넘는 돈만 매수에 씀
+  for(let r=0;r<3;r++) for(const role of ['pension2','isa','stock']){
+    const m=mem.find(m=>m.role===role); if(!m) continue;
+    const cands=items.filter(t=>t.p>0&&t.T-t.H>=t.p&&((PLACE[t.cls]||PLACE_DEF)[r]===role)).sort((a,b)=>(b.T-b.H)-(a.T-a.H));
+    for(const t of cands){ const amt=Math.min(t.T-t.H,spend[m.id],budget); const q=Math.floor(amt/t.p); if(q<=0) continue;
+      orders.push({acct:m.id,code:t.code,name:t.name,side:'buy',q,p:t.p}); const a=q*t.p; t.H+=a; spend[m.id]-=a; budget-=a; cashAll-=a } }
+  return {b,mem,model,items,orders,B,cashT,cashAll,otherCls,wCash,reserve:reserve-resLeft};
+}
+const bkey=o=>`${o.acct}|${o.code}|${o.side}`;
+function renderBundle(){
+  const show=RBM==='bundle'; $('bdCard').hidden=!show; ['rbCardA','rbCardB','rbCardC'].forEach(id=>$(id).hidden=show);
+  if(!show) return;
+  const P=bundlePlan();
+  if(!P){ $('bdInfo').textContent='묶음 설정이 아직 없습니다. Claude에게 묶음 설정을 요청하세요.'; $('bdOrders').innerHTML=''; $('bdCls').innerHTML=''; return }
+  const nm=id=>esc(PF[id]?.name||id);
+  $('bdInfo').textContent=`묶음: ${P.mem.map(m=>PF[m.id]?.name||m.id).join(' · ')} · 목표: ${P.b.name||'프리즘 개인연금 성장형'} (${P.model.length}종목)${P.reserve?` · 일반계좌 RP 중 ${wonF(P.reserve)}은 옮길 돈으로 남겨 두고 계산`:''}`;
+  if(document.activeElement!==$('bdReserve')) $('bdReserve').value=n(P.b.reserve);
+  // 사용자가 고친 주문은 유지
+  const ords=P.orders.map(o=>{ const e=BORD[bkey(o)]; return e?.edited? {...o,q:e.q,p:e.p} : o });
+  for(const k of Object.keys(BORD)) if(BORD[k].edited&&!ords.some(o=>bkey(o)===k)){ const [acct,code,side]=k.split('|'); const t=P.items.find(x=>x.code===code); if(t) ords.push({acct,code,name:t.name,side,q:BORD[k].q,p:BORD[k].p}) }
+  let buy=0,sell=0; ords.forEach(o=>{ const a=n(o.q)*n(o.p); if(o.side==='buy') buy+=a; else sell+=a });
+  $('bdTot').textContent=wonF(P.B); $('bdBuy').textContent=wonF(buy); $('bdSell').textContent=wonF(sell);
+  const cashAfter=P.cashAll+ (P.orders.reduce((a,o)=>a+(o.side==='buy'?n(o.q)*n(o.p):-n(o.q)*n(o.p)),0)) - buy + sell;
+  $('bdCash').textContent=`${wonF(cashAfter)} (${wonF(P.cashT)})`;
+  // 자산군 표
+  const cur={}, tgt={}, aft={};
+  P.items.forEach(t=>{ tgt[t.cls]=(tgt[t.cls]||0)+n(t.w); cur[t.cls]=(cur[t.cls]||0)+(t.H-(P.orders.filter(o=>o.code===t.code).reduce((a,o)=>a+(o.side==='buy'?1:-1)*n(o.q)*n(o.p),0))) });
+  P.items.forEach(t=>{ aft[t.cls]=(aft[t.cls]||0)+(t.H-(P.orders.filter(o=>o.code===t.code).reduce((a,o)=>a+(o.side==='buy'?1:-1)*n(o.q)*n(o.p),0)))+ords.filter(o=>o.code===t.code).reduce((a,o)=>a+(o.side==='buy'?1:-1)*n(o.q)*n(o.p),0) });
+  for(const [c,v] of Object.entries(P.otherCls)){ cur[c]=(cur[c]||0)+v; aft[c]=(aft[c]||0)+v }
+  const curCash=P.cashAll+P.orders.reduce((a,o)=>a+(o.side==='buy'?1:-1)*n(o.q)*n(o.p),0);
+  const pc=v=>P.B? (v/P.B*100).toFixed(1)+'%' : '–';
+  const rows=[...CLS_ORDER.filter(c=>c!=='cash'&&(tgt[c]||cur[c])).map(c=>`<tr><td>${CLS_LABEL[c]||c}</td><td class="num">${pc(cur[c]||0)}</td><td class="num">${(tgt[c]||0).toFixed(0)}%</td><td class="num">${pc(aft[c]||0)}</td></tr>`),
+    `<tr><td>현금성</td><td class="num">${pc(curCash)}</td><td class="num">${P.wCash.toFixed(0)}%</td><td class="num">${pc(cashAfter)}</td></tr>`];
+  $('bdCls').innerHTML=rows.join('');
+  // 계좌별 주문
+  const by={}; ords.forEach(o=>(by[o.acct] ||= []).push(o));
+  $('bdOrders').innerHTML= ords.length? P.mem.filter(m=>by[m.id]).map(m=>`<div class="item"><div class="item-h"><b>${nm(m.id)}</b><span class="note" style="margin-left:auto">예수금 ${wonF(n(PF[m.id].cash))}</span></div>
+      ${by[m.id].map(o=>`<div class="ord ${o.side}" data-bk="${esc(bkey(o))}">
+        <b style="font-size:14px;grid-column:1/-1">${esc(o.name)}</b>
+        <span class="tag ${o.side==='buy'?'':'edit'}">${o.side==='buy'?'매수':'매도'}</span>
+        <input type="number" inputmode="numeric" step="1" min="0" data-bo="q" value="${n(o.q)}" aria-label="수량"><span class="u">주 ×</span>
+        <input type="number" inputmode="numeric" step="any" min="0" data-bo="p" value="${n(o.p)}" aria-label="체결가"><span class="u">원</span>
+        <div class="oa-row"><span class="oa num ${o.side}">${o.side==='buy'?'매수':'매도'} 금액 ${wonF(n(o.q)*n(o.p))}</span><button class="btn ghost sm" type="button" data-bap>체결 반영</button></div>
+      </div>`).join('')}</div>`).join('')
+    : '<p class="empty">지금은 주문할 것이 없습니다. 목표 비중에 맞거나, 쓸 수 있는 현금이 없습니다.</p>';
+  $('bdOrders')._ords=ords;
+}
+$('bdOrders').addEventListener('input',e=>{
+  const row=e.target.closest('[data-bk]'), k=e.target.dataset.bo; if(!row||!k) return;
+  const o=($('bdOrders')._ords||[]).find(x=>bkey(x)===row.dataset.bk); if(!o) return;
+  const cur=BORD[row.dataset.bk]||{q:o.q,p:o.p}; BORD[row.dataset.bk]={...cur,[k]:n(e.target.value),edited:true};
+  const a=n(BORD[row.dataset.bk].q)*n(BORD[row.dataset.bk].p); row.querySelector('.oa').textContent=`${o.side==='buy'?'매수':'매도'} 금액 ${wonF(a)}`;
+});
+$('bdOrders').addEventListener('change',()=>renderBundle());
+$('bdOrders').addEventListener('click',async e=>{
+  const btn=e.target.closest('[data-bap]'); if(!btn) return; const row=btn.closest('[data-bk]');
+  const base=($('bdOrders')._ords||[]).find(x=>bkey(x)===row.dataset.bk); if(!base) return;
+  const o={...base,...(BORD[row.dataset.bk]?.edited?{q:BORD[row.dataset.bk].q,p:BORD[row.dataset.bk].p}:{})};
+  if(!(n(o.q)>0)||!(n(o.p)>0)) return msg($('bdMsg'),'수량과 체결가를 확인하세요.',true);
+  if(busyAcct(o.acct)) return msg($('bdMsg'),`계좌별 화면의 ${PF[o.acct]?.name||o.acct}에 저장하지 않은 변경이 있습니다. 먼저 저장하세요.`,true);
+  if(btn.dataset.armed!=='1'){ btn.dataset.armed='1'; btn.textContent='한 번 더 누르면 반영'; return }
+  const doc=clone(PF[o.acct]); let it=(doc.items||[]).find(x=>x.code===o.code), amt=Math.round(n(o.q)*n(o.p)), fromRp=0;
+  if(!it){ if(o.side==='sell') return msg($('bdMsg'),'그 계좌에 이 종목이 없습니다.',true); it={name:o.name,code:o.code,src:'kr',qty:0,price:n(o.p),w:0}; (doc.items ||= []).push(it) }
+  if(o.side==='buy'){
+    const fromCash=Math.min(amt,Math.max(0,n(doc.cash))); doc.cash=n(doc.cash)-fromCash; let need=amt-fromCash;
+    if(need>0){ const rp=doc.items.find(x=>isCashItem(x)&&x.src==='manual'); const rv=rp? n(rp.qty)*n(rp.price):0;
+      if(!rp||rv<need){ return msg($('bdMsg'),`${doc.name} 예수금과 RP가 ${wonF(need-rv)} 부족합니다.`,true) }
+      rp.price=n(rp.price)-need/(n(rp.qty)||1); fromRp=need }
+    it.qty=n(it.qty)+n(o.q);
+  } else { if(n(o.q)>n(it.qty)) return msg($('bdMsg'),`보유 ${n(it.qty)}주보다 많이 팔 수 없습니다.`,true); it.qty=n(it.qty)-n(o.q); doc.cash=n(doc.cash)+amt }
+  if(it.src!=='usdm') it.price=n(o.p);
+  doc.trades=[...(doc.trades||[]),{date:todayStr(),buy:o.side==='buy'?amt:0,sell:o.side==='sell'?amt:0,cashAfter:Math.round(n(doc.cash)),fromRp:Math.round(fromRp),via:'bundle',items:[{name:it.name,code:it.code,side:o.side,q:n(o.q),p:n(o.p)}]}].slice(-200);
+  try{ await putPF(o.acct,doc); delete BORD[row.dataset.bk]; msg($('bdMsg'),`${doc.name}: ${it.name} ${o.side==='buy'?'매수':'매도'} ${n(o.q).toLocaleString('ko-KR')}주 반영 완료${fromRp?` (RP에서 ${wonF(fromRp)} 사용)`:''}`) }
+  catch(err){ msg($('bdMsg'),saveErr(err),true) }
+});
+$('bdReserveSave').addEventListener('click',async()=>{
+  const b=bdDoc(); if(!b) return; const v=Math.max(0,Math.round(n($('bdReserve').value)));
+  try{ await DB.doc('bundles/core').set({...b,reserve:v,updatedAt:new Date().toISOString()}); BORD={}; msg($('bdMsg'),`남겨둘 RP를 ${wonF(v)}으로 저장했습니다.`); renderBundle() }
+  catch(err){ msg($('bdMsg'),saveErr(err),true) }
+});
+$('bdReset').addEventListener('click',()=>{ BORD={}; renderBundle(); msg($('bdMsg'),'추천 주문으로 되돌렸습니다.') });
+document.querySelectorAll('[data-bmd]').forEach(b=>b.addEventListener('click',()=>{ BMD=b.dataset.bmd; BORD={}; document.querySelectorAll('[data-bmd]').forEach(x=>x.setAttribute('aria-pressed',x===b)); renderBundle() }));
+document.querySelectorAll('[data-rbm]').forEach(b=>b.addEventListener('click',()=>{ RBM=b.dataset.rbm; document.querySelectorAll('[data-rbm]').forEach(x=>x.setAttribute('aria-pressed',x===b)); renderBundle(); try{localStorage.setItem('rbm',RBM)}catch{} }));
+try{ if(localStorage.getItem('rbm')==='bundle'){ RBM='bundle'; document.querySelectorAll('[data-rbm]').forEach(x=>x.setAttribute('aria-pressed',x.dataset.rbm==='bundle')) } }catch{}
+
 function renderAsset(){
   if(!STATE) return;
   const ports=Object.entries(STATE.portfolios||{}).sort((a,b)=>(a[1].order??99)-(b[1].order??99));
@@ -1539,7 +1684,9 @@ $('tradeList').addEventListener('click',async e=>{
   if(miss.length) return msg($('trMsg'),`지금 계좌에 없는 종목이 있어 되돌릴 수 없습니다: ${miss.join(', ')}`,true);
   if(neg.length) return msg($('trMsg'),`되돌리면 보유 수량이 음수가 됩니다: ${neg.join(', ')}. 이후 매매를 먼저 되돌리세요.`,true);
   if(del.dataset.armed!=='1'){ del.dataset.armed='1'; del.textContent='한 번 더 누르면 되돌림'; return }
-  a.cash=Math.round(n(a.cash)+n(t.buy)-n(t.sell)); a.trades.splice(idx,1);
+  a.cash=Math.round(n(a.cash)+n(t.buy)-n(t.sell)-n(t.fromRp));
+  if(n(t.fromRp)){ const rp=a.items.find(x=>isCashItem(x)&&x.src==='manual'); if(rp) rp.price=n(rp.price)+n(t.fromRp)/(n(rp.qty)||1); else a.cash+=n(t.fromRp) }
+  a.trades.splice(idx,1);
   try{ await putPF(acct,a); msg($('trMsg'),`${t.date} 매매를 되돌렸습니다. 보유 수량과 예수금이 원래대로 돌아갔습니다.`) }catch(err){ msg($('trMsg'),saveErr(err),true) }
 });
 
@@ -1563,12 +1710,13 @@ function startApp(){
     RECS=q.docs.map(x=>x.data());
     render();
   });
+  DB.collection('bundles').onSnapshot(()=>renderBundle());
   DB.doc('strategy/main').onSnapshot(s=>{ ST=s.exists?s.data():null; stIdx=clone(ST?.indices||[]); stRenderAll(); if(!dirty&&draft) rbRenderAll() });
   DB.collection('portfolios').onSnapshot(q=>{
     PF={}; q.docs.forEach(x=>PF[x.id]=x.data());
     if(!cur||!PF[cur]) {cur=pfList()[0]?.[0]||null; dirty=false}
     if(!dirty){draft=cur?clone(PF[cur]):null; rbRenderAll()} else rbSeg();
-    renderAsset(); render(); renderLogs();
+    renderAsset(); render(); renderLogs(); renderBundle();
   });
   renderAsset();
 }
