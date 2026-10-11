@@ -241,6 +241,7 @@ input:disabled{opacity:.75}
   <section id="tab-home" class="wrap-inner" style="display:flex;flex-direction:column;gap:14px">
     <div class="banner" id="stHome" hidden></div>
     <div class="banner" id="satHome" hidden></div>
+    <div class="banner" id="remHome" hidden></div>
     <div class="card hero">
       <h2>예상 은퇴 가능 시점</h2>
       <div class="seg" role="group" aria-label="수익률 시나리오">
@@ -298,6 +299,22 @@ input:disabled{opacity:.75}
       </div>
       <div id="histChart" role="img" aria-label="월별 금융자산 추이"></div>
       <p class="note" id="realNote"></p>
+    </div>
+
+    <div class="card" id="remCard">
+      <h2>일정</h2>
+      <div class="lgs" id="remList"><p class="empty">일정을 불러오는 중입니다.</p></div>
+      <details class="more"><summary>일정 추가</summary>
+        <form id="remForm" class="lg-ed" style="padding-top:8px">
+          <label>날짜<input type="date" id="rm-date" required></label>
+          <label>반복<select id="rm-every"><option value="year">매년</option><option value="">한 번</option></select></label>
+          <label style="grid-column:1/-1">할 일<input type="text" id="rm-title" required maxlength="80"></label>
+          <label style="grid-column:1/-1">메모<input type="text" id="rm-note" maxlength="300"></label>
+          <button class="btn sm" type="submit" style="grid-column:1/-1">추가</button>
+        </form>
+      </details>
+      <p class="note" id="remMsg"></p>
+      <p class="note">14일 안에 다가오거나 지난 일정은 맨 위에 알림으로 뜹니다. '완료'를 누르면 매년 일정은 다음 해로 넘어가고, 한 번 일정은 사라집니다.</p>
     </div>
   </section>
 
@@ -1615,6 +1632,43 @@ document.querySelectorAll('[data-bmd]').forEach(b=>b.addEventListener('click',()
 document.querySelectorAll('[data-rbm]').forEach(b=>b.addEventListener('click',()=>{ RBM=b.dataset.rbm; document.querySelectorAll('[data-rbm]').forEach(x=>x.setAttribute('aria-pressed',x===b)); renderBundle(); try{localStorage.setItem('rbm',RBM)}catch{} }));
 try{ if(localStorage.getItem('rbm')==='bundle'){ RBM='bundle'; document.querySelectorAll('[data-rbm]').forEach(x=>x.setAttribute('aria-pressed',x.dataset.rbm==='bundle')) } }catch{}
 
+/* 일정 */
+let REM=[];
+const dday=d=>Math.round((new Date(d+'T00:00:00')-new Date(todayStr()+'T00:00:00'))/864e5);
+const ddTxt=k=> k===0?'오늘':k>0?`D-${k}`:`${-k}일 지남`;
+function renderRem(){
+  const L=[...REM].sort((a,b)=>a.date<b.date?-1:1);
+  $('remList').innerHTML= L.length? L.map(r=>{ const k=dday(r.date);
+    return `<div class="lg" data-id="${esc(r.id)}">
+      <div class="lg-h"><span class="d">${esc(r.date)}</span><b>${esc(r.title)}</b><span class="tag ${r.every==='year'?'':'edit'}">${r.every==='year'?'매년':'한 번'}</span><span class="num amt ${k<0?'neg':k<=14?'pos':''}">${ddTxt(k)}</span></div>
+      ${r.note?`<div class="lg-sub">${esc(r.note)}</div>`:''}
+      <div class="lg-a"><button class="btn ghost sm" type="button" data-rdone>완료</button><button class="btn danger sm" type="button" data-rdel>삭제</button></div></div>` }).join('')
+    : '<p class="empty">등록된 일정이 없습니다.</p>';
+  const due=L.filter(r=>dday(r.date)<=14), hb=$('remHome');
+  hb.hidden=!due.length;
+  if(due.length) hb.textContent='일정: '+due.map(r=>`${r.title} (${r.date.slice(5).replace('-','/')}, ${ddTxt(dday(r.date))})`).join(' · ');
+}
+async function putRem(items,ok){
+  try{ await DB.doc('reminders/main').set({items,updatedAt:new Date().toISOString()}); msg($('remMsg'),ok) }
+  catch(err){ msg($('remMsg'),saveErr(err),true) }
+}
+$('remList').addEventListener('click',async e=>{
+  const row=e.target.closest('.lg'); if(!row) return; const id=row.dataset.id, r=REM.find(x=>x.id===id); if(!r) return;
+  if(e.target.closest('[data-rdone]')){
+    if(r.every==='year'){ const [y,m,d]=r.date.split('-'); let ny=+y+1; while(`${ny}-${m}-${d}`<todayStr()) ny++;
+      return putRem(REM.map(x=>x.id===id?{...x,date:`${ny}-${m}-${d}`}:x),`'${r.title}' 완료. 다음 일정은 ${ny}-${m}-${d}입니다.`) }
+    return putRem(REM.filter(x=>x.id!==id),`'${r.title}' 완료.`);
+  }
+  const del=e.target.closest('[data-rdel]'); if(!del) return;
+  if(del.dataset.armed!=='1'){ del.dataset.armed='1'; del.textContent='한 번 더 누르면 삭제'; return }
+  putRem(REM.filter(x=>x.id!==id),`'${r.title}' 일정을 삭제했습니다.`);
+});
+$('remForm').addEventListener('submit',e=>{
+  e.preventDefault();
+  const r={id:Date.now().toString(36),date:$('rm-date').value,title:$('rm-title').value.trim(),note:$('rm-note').value.trim(),every:$('rm-every').value};
+  if(!r.date||!r.title) return;
+  putRem([...REM,r],`'${r.title}' 일정을 추가했습니다.`).then(()=>{ $('rm-title').value=''; $('rm-note').value='' });
+});
 function renderSat(){
   if(!STATE) return;
   let total=0, sat=0, wait=0; const sec={}, list=[];
@@ -1805,6 +1859,7 @@ function startApp(){
     render();
   });
   DB.collection('bundles').onSnapshot(()=>renderBundle());
+  DB.doc('reminders/main').onSnapshot(s=>{ REM=s.exists?(s.data().items||[]):[]; renderRem() });
   DB.doc('strategy/main').onSnapshot(s=>{ ST=s.exists?s.data():null; stIdx=clone(ST?.indices||[]); stRenderAll(); if(!dirty&&draft) rbRenderAll() });
   DB.collection('portfolios').onSnapshot(q=>{
     PF={}; q.docs.forEach(x=>PF[x.id]=x.data());
