@@ -1188,6 +1188,7 @@ function buildApply(idxs){
 }
 async function commitApply(idxs,res){
   const {next,trades,buy,sell,cashAfter}=res;
+  msg($('rbMsg'),'저장하는 중입니다. 몇 초 걸립니다.');
   next.cash=cashAfter; next.updatedAt=new Date().toISOString();
   next.trades=[...(next.trades||[]),{date:todayStr(),buy:Math.round(buy),sell:Math.round(sell),cashAfter,items:trades}].slice(-200);
   // 반영한 종목은 남은 부족분을 다시 추천, 나머지 종목은 지금 주문을 그대로 고정
@@ -1610,6 +1611,8 @@ function renderBundle(){
   $('bdCls').innerHTML=rows.join('');
   // 계좌별 주문
   const by={}; ords.forEach(o=>(by[o.acct] ||= []).push(o));
+  // 입력 중인 칸을 먼저 놓아 줌: 지우는 도중 blur→change→renderBundle 이 겹치면 innerHTML 이 실패함
+  if($('bdOrders').contains(document.activeElement)) document.activeElement.blur();
   $('bdOrders').innerHTML= ords.length? P.mem.filter(m=>by[m.id]).map(m=>`<div class="item"><div class="item-h"><b>${nm(m.id)}</b><span class="note" style="margin-left:auto">${(()=>{const rp=(PF[m.id].items||[]).filter(x=>isCashItem(x)&&isManual(x)).reduce((t,x)=>t+n(x.qty)*n(x.price),0); return rp? `예수금 ${wonF(n(PF[m.id].cash))} + RP ${wonF(rp)}${m.role==='stock'&&P.reserve?` (남겨둘 ${wonF(P.reserve)} 제외)`:''}` : `예수금 ${wonF(n(PF[m.id].cash))}`})()}</span></div>
       ${by[m.id].map(o=>`<div class="ord ${o.side}" data-bk="${esc(bkey(o))}">
         <b style="font-size:14px;grid-column:1/-1">${esc(o.name)}</b>
@@ -1646,8 +1649,10 @@ $('bdOrders').addEventListener('click',async e=>{
   } else { if(n(o.q)>n(it.qty)) return msg($('bdMsg'),`보유 ${n(it.qty)}주보다 많이 팔 수 없습니다.`,true); it.qty=n(it.qty)-n(o.q); doc.cash=n(doc.cash)+amt }
   if(it.src!=='usdm') it.price=n(o.p);
   doc.trades=[...(doc.trades||[]),{date:todayStr(),buy:o.side==='buy'?amt:0,sell:o.side==='sell'?amt:0,cashAfter:Math.round(n(doc.cash)),fromRp:Math.round(fromRp),via:'bundle',items:[{name:it.name,code:it.code,side:o.side,q:n(o.q),p:n(o.p)}]}].slice(-200);
-  try{ await putPF(o.acct,doc); delete BORD[row.dataset.bk]; msg($('bdMsg'),`${doc.name}: ${it.name} ${o.side==='buy'?'매수':'매도'} ${n(o.q).toLocaleString('ko-KR')}주 반영 완료${fromRp?` (RP에서 ${wonF(fromRp)} 사용)`:''}`) }
-  catch(err){ msg($('bdMsg'),saveErr(err),true) }
+  btn.dataset.armed=''; btn.disabled=true; btn.textContent='저장 중…'; msg($('bdMsg'),'저장하는 중입니다. 몇 초 걸립니다.');
+  // 저장이 끝난 뒤 고친 주문 기록을 지우고 다시 그려야 반영한 줄이 바로 사라짐
+  try{ await putPF(o.acct,doc); delete BORD[row.dataset.bk]; renderBundle(); msg($('bdMsg'),`${doc.name}: ${it.name} ${o.side==='buy'?'매수':'매도'} ${n(o.q).toLocaleString('ko-KR')}주 반영 완료${fromRp?` (RP에서 ${wonF(fromRp)} 사용)`:''}`) }
+  catch(err){ btn.disabled=false; btn.textContent='체결 반영'; msg($('bdMsg'),saveErr(err),true) }
 });
 $('bdReserveSave').addEventListener('click',async()=>{
   const b=bdDoc(); if(!b) return; const v=Math.max(0,Math.round(n($('bdReserve').value)));
