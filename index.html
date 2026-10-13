@@ -1798,13 +1798,22 @@ async function loadAll(){
   PRICES= pr? await openWeb(pr.env,GH.viewPw) : null; PRICES_SHA=pr?.sha||null; LOADED_AT=Date.now();
 }
 /* 열어 둔 화면도 평일 20:30(한국 시간)에 자동으로 다시 불러옴. 가격 조회 Action(20:10)이 늦으면 22:00까지 5분마다 다시 확인 */
+let AUTO_REQ=0;  // 앱이 대신 가격 조회를 요청한 날(20:30 시각)
 function kstAt(h,m){ const k=new Date(Date.now()+9*3600e3); return {wd:k.getUTCDay(), t:Date.UTC(k.getUTCFullYear(),k.getUTCMonth(),k.getUTCDate(),h,m)-9*3600e3} }
 async function autoReload(){
   if(!started||!GH.viewPw) return; const now=Date.now(), a=kstAt(20,30);
   if(a.wd===0||a.wd===6||now<a.t) return;
   const fresh= PRICES?.at && Date.parse(PRICES.at)>=kstAt(20,0).t;
   if(LOADED_AT>=a.t && (fresh || now>=kstAt(22,0).t || now-LOADED_AT<5*60e3)) return;
-  try{ await loadAll(); emit('*'); renderAsset(); msg($('asMsg'), PRICES?.at&&Date.parse(PRICES.at)>=kstAt(20,0).t? '20:30 자동으로 오늘 가격을 불러왔습니다.' : '20:30 자동으로 다시 불러왔지만 오늘 가격 조회가 아직입니다. 5분 뒤 다시 확인합니다.') }catch{}
+  try{
+    await loadAll(); emit('*'); renderAsset();
+    if(PRICES?.at&&Date.parse(PRICES.at)>=kstAt(20,0).t) return msg($('asMsg'),'20:30 자동으로 오늘 가격을 불러왔습니다.');
+    // 예약 실행이 아직이면 쓰기 권한이 있는 기기에서 하루 한 번 직접 가격 조회를 요청
+    if(GH.cfg?.writeTok && AUTO_REQ!==a.t){ AUTO_REQ=a.t; await ensureWrite();
+      await gh('actions/workflows/daily.yml/dispatches',{method:'POST',tok:GH.writeTok,body:JSON.stringify({ref:GH.branch,inputs:{force:false}})});
+      return msg($('asMsg'),'오늘 가격 자동 조회가 아직이라 앱이 대신 요청했습니다. 5분 안에 다시 불러옵니다.') }
+    msg($('asMsg'),'오늘 가격 조회가 아직입니다. 5분 뒤 다시 확인합니다.');
+  }catch{}
 }
 setInterval(autoReload,60e3);
 document.addEventListener('visibilitychange',()=>{ if(!document.hidden) autoReload() });
