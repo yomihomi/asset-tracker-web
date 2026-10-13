@@ -1801,14 +1801,24 @@ $('asReload').addEventListener('click',async()=>{
   try{ await loadAll(); emit('*'); renderAsset(); msg($('asMsg'),'최신 데이터를 불러왔습니다.') }catch(e){ msg($('asMsg'),ghErrText(e),true) }
 });
 $('asRefresh').addEventListener('click',async()=>{
+  const btn=$('asRefresh'); if(btn.disabled) return;
+  let tick=null;
   try{
-    await ensureWrite();
+    await ensureWrite(); btn.disabled=true;
     await gh('actions/workflows/daily.yml/dispatches',{method:'POST',tok:GH.writeTok,body:JSON.stringify({ref:GH.branch,inputs:{force:false}})});
-    msg($('asMsg'),'가격 갱신을 요청했습니다. 보통 1~2분 걸립니다. 끝나면 자동으로 불러옵니다.');
-    const before=PRICES_SHA;
-    for(let i=0;i<12;i++){ await new Promise(r=>setTimeout(r,15000)); const f=await getFile('data/prices.enc.json'); if(f&&f.sha!==before){ await loadAll(); emit('*'); renderAsset(); return msg($('asMsg'),'새 가격으로 갱신했습니다.') } }
-    msg($('asMsg'),'아직 끝나지 않았습니다. 잠시 후 다시 불러오기를 누르세요.');
-  }catch(e){ msg($('asMsg'), e.code==='no_write'?'이 기기에는 쓰기 토큰이 없어 요청할 수 없습니다.':ghErrText(e),true) }
+    const before=PRICES_SHA, t0=Date.now(), sleep=ms=>new Promise(r=>setTimeout(r,ms));
+    const show=()=>msg($('asMsg'),`가격을 조회하는 중… ${Math.round((Date.now()-t0)/1000)}초 (보통 20~30초)`);
+    show(); tick=setInterval(show,1000);
+    // Action이 뜨는 데 10초쯤 걸리므로 그 뒤부터 3초마다 파일이 바뀌었는지 확인 (sha만 보고, 바뀌면 그때 내려받아 복호화)
+    await sleep(10000);
+    while(Date.now()-t0<180000){
+      const j=await gh(`contents/data/prices.enc.json?ref=${encodeURIComponent(GH.branch)}&t=${Date.now()}`).catch(()=>null);
+      if(j&&j.sha!==before){ clearInterval(tick); await loadAll(); emit('*'); renderAsset(); return msg($('asMsg'),`새 가격으로 갱신했습니다. (${Math.round((Date.now()-t0)/1000)}초)`) }
+      await sleep(3000);
+    }
+    clearInterval(tick); msg($('asMsg'),'아직 끝나지 않았습니다. 잠시 후 다시 불러오기를 누르세요.');
+  }catch(e){ clearInterval(tick); msg($('asMsg'), e.code==='no_write'?'이 기기에는 쓰기 토큰이 없어 요청할 수 없습니다.':ghErrText(e),true) }
+  finally{ btn.disabled=false }
 });
 $('fillFromAcct').addEventListener('click',()=>{
   const m=$('f-month').value, a=autoRecord(m);
