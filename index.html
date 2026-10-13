@@ -1425,7 +1425,7 @@ async function ensureWrite(){
 }
 
 /* 기존 화면 코드가 쓰는 DB 인터페이스를 암호화 파일 하나로 구현 */
-let STATE=null, STATE_SHA=null, DAILY=null, PRICES=null, PRICES_SHA=null;
+let STATE=null, STATE_SHA=null, DAILY=null, PRICES=null, PRICES_SHA=null, LOADED_AT=0;
 const listeners=[];
 const strip=o=>JSON.parse(JSON.stringify(o,(k,v)=>k.startsWith('_')?undefined:v));
 function snapDoc(c,id){const d=STATE?.[c]?.[id]; return {id,exists:!!d,data:()=>d?clone(d):undefined,metadata:{}}}
@@ -1711,7 +1711,7 @@ function sigEval(){
   const sg=SIG||SIG_SEED, out=[], b=PRICES?.signals?.bbb;
   if(b){ const lv= b.cur>=1.5?'bad': (b.cur>=1.3||b.chg20>=0.25)?'warn':'good';
     out.push({nm:'BBB 회사채 스프레드',sub:`자동 ${md(b.date)}${b.stale?' (조회 실패, 직전 값)':''} · 20일 ${b.chg20>=0?'+':''}${b.chg20.toFixed(2)}%p · 1년 ${b.lo.toFixed(2)}~${b.hi.toFixed(2)}%`,v:b.cur.toFixed(2)+'%',lv}) }
-  else out.push({nm:'BBB 회사채 스프레드',sub:'다음 자동 조회(평일 16:10) 후 표시됩니다.',v:'–',lv:''});
+  else out.push({nm:'BBB 회사채 스프레드',sub:'다음 자동 조회(평일 20:10) 후 표시됩니다.',v:'–',lv:''});
   const M=[...(sg.margin||[])].sort((a,b)=>a.m<b.m?-1:1), last=M.at(-1);
   if(last){ const pk=Math.max(...M.map(x=>n(x.v))), dd=(n(last.v)/pk-1)*100, pv=M.at(-2), mm=pv?(n(last.v)/n(pv.v)-1)*100:0;
     const lv= dd<=-15?'bad': (dd<=-8||mm<=-5)?'warn':'good', old=monthsAgo(last.m)>2;
@@ -1795,8 +1795,19 @@ async function loadAll(){
   if(!st) throw Object.assign(new Error('no state'),{code:'no_state'});
   STATE=await openWeb(st.env,GH.viewPw); STATE_SHA=st.sha;
   DAILY= dy? await openWeb(dy.env,GH.viewPw) : {records:[]};
-  PRICES= pr? await openWeb(pr.env,GH.viewPw) : null; PRICES_SHA=pr?.sha||null;
+  PRICES= pr? await openWeb(pr.env,GH.viewPw) : null; PRICES_SHA=pr?.sha||null; LOADED_AT=Date.now();
 }
+/* 열어 둔 화면도 평일 20:30(한국 시간)에 자동으로 다시 불러옴. 가격 조회 Action(20:10)이 늦으면 22:00까지 5분마다 다시 확인 */
+function kstAt(h,m){ const k=new Date(Date.now()+9*3600e3); return {wd:k.getUTCDay(), t:Date.UTC(k.getUTCFullYear(),k.getUTCMonth(),k.getUTCDate(),h,m)-9*3600e3} }
+async function autoReload(){
+  if(!started||!GH.viewPw) return; const now=Date.now(), a=kstAt(20,30);
+  if(a.wd===0||a.wd===6||now<a.t) return;
+  const fresh= PRICES?.at && Date.parse(PRICES.at)>=kstAt(20,0).t;
+  if(LOADED_AT>=a.t && (fresh || now>=kstAt(22,0).t || now-LOADED_AT<5*60e3)) return;
+  try{ await loadAll(); emit('*'); renderAsset(); msg($('asMsg'), PRICES?.at&&Date.parse(PRICES.at)>=kstAt(20,0).t? '20:30 자동으로 오늘 가격을 불러왔습니다.' : '20:30 자동으로 다시 불러왔지만 오늘 가격 조회가 아직입니다. 5분 뒤 다시 확인합니다.') }catch{}
+}
+setInterval(autoReload,60e3);
+document.addEventListener('visibilitychange',()=>{ if(!document.hidden) autoReload() });
 $('asReload').addEventListener('click',async()=>{
   try{ await loadAll(); emit('*'); renderAsset(); msg($('asMsg'),'최신 데이터를 불러왔습니다.') }catch(e){ msg($('asMsg'),ghErrText(e),true) }
 });
