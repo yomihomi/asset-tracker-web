@@ -1710,7 +1710,7 @@ const monthsAgo=m=>{const d=new Date(); return d.getFullYear()*12+d.getMonth()-y
 function sigEval(){
   const sg=SIG||SIG_SEED, out=[], b=PRICES?.signals?.bbb;
   if(b){ const lv= b.cur>=1.5?'bad': (b.cur>=1.3||b.chg20>=0.25)?'warn':'good';
-    out.push({nm:'BBB 회사채 스프레드',sub:`자동 ${md(b.date)}${b.stale?' (조회 실패, 직전 값)':''} · 20일 ${b.chg20>=0?'+':''}${b.chg20.toFixed(2)}%p · 1년 ${b.lo.toFixed(2)}~${b.hi.toFixed(2)}%`,v:b.cur.toFixed(2)+'%',lv}) }
+    out.push({nm:'BBB 회사채 스프레드',sub:`${md(b.date)} 기준 (FRED는 1~3영업일 늦게 발표)${b.stale?' · 조회 실패, 직전 값':''} · 20일 ${b.chg20>=0?'+':''}${b.chg20.toFixed(2)}%p · 1년 ${b.lo.toFixed(2)}~${b.hi.toFixed(2)}%`,v:b.cur.toFixed(2)+'%',lv}) }
   else out.push({nm:'BBB 회사채 스프레드',sub:'다음 자동 조회(평일 20:10) 후 표시됩니다.',v:'–',lv:''});
   const M=[...(sg.margin||[])].sort((a,b)=>a.m<b.m?-1:1), last=M.at(-1);
   if(last){ const pk=Math.max(...M.map(x=>n(x.v))), dd=(n(last.v)/pk-1)*100, pv=M.at(-2), mm=pv?(n(last.v)/n(pv.v)-1)*100:0;
