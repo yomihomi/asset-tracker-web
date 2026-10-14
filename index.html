@@ -250,6 +250,7 @@ input:disabled{opacity:.75}
     <div class="banner" id="satHome" hidden></div>
     <div class="banner" id="remHome" hidden></div>
     <div class="banner" id="sigHome" hidden></div>
+    <div class="banner" id="semiHome" hidden></div>
     <div class="card hero">
       <h2>예상 은퇴 가능 시점</h2>
       <div class="seg" role="group" aria-label="수익률 시나리오">
@@ -309,6 +310,25 @@ input:disabled{opacity:.75}
       <p class="note" id="realNote"></p>
     </div>
 
+    <div class="card" id="remCard">
+      <h2>일정</h2>
+      <div class="lgs" id="remList"><p class="empty">일정을 불러오는 중입니다.</p></div>
+      <details class="more"><summary>일정 추가</summary>
+        <form id="remForm" class="lg-ed" style="padding-top:8px">
+          <label>날짜<input type="date" id="rm-date" required></label>
+          <label>반복<select id="rm-every"><option value="year">매년</option><option value="">한 번</option></select></label>
+          <label style="grid-column:1/-1">할 일<input type="text" id="rm-title" required maxlength="80"></label>
+          <label style="grid-column:1/-1">메모<input type="text" id="rm-note" maxlength="300"></label>
+          <button class="btn sm" type="submit" style="grid-column:1/-1">추가</button>
+        </form>
+      </details>
+      <p class="note" id="remMsg"></p>
+      <p class="note">14일 안에 다가오거나 지난 일정은 맨 위에 알림으로 뜹니다. '완료'를 누르면 매년 일정은 다음 해로 넘어가고, 한 번 일정은 사라집니다.</p>
+    </div>
+  </section>
+
+  <!-- 시장 -->
+  <section id="tab-market" hidden style="display:flex;flex-direction:column;gap:14px">
     <div class="card" id="sigCard">
       <h2>시장 경고 신호</h2>
       <span class="chip warn" id="sigChip">불러오는 중</span>
@@ -328,21 +348,36 @@ input:disabled{opacity:.75}
       <p class="note">AI 투자 사이클이 꺾이는지 보는 신호입니다. 셋 다 켜지면 주가와 금리가 함께 내려가는 국면으로 넘어가는 신호로 봅니다. BBB 스프레드는 평일 자동(FRED), 신용매수는 FINRA 발표(매월 중순), 빅테크 투자는 실적 발표(1·4·7·10월 말) 때 입력하세요.</p>
     </div>
 
-    <div class="card" id="remCard">
-      <h2>일정</h2>
-      <div class="lgs" id="remList"><p class="empty">일정을 불러오는 중입니다.</p></div>
-      <details class="more"><summary>일정 추가</summary>
-        <form id="remForm" class="lg-ed" style="padding-top:8px">
-          <label>날짜<input type="date" id="rm-date" required></label>
-          <label>반복<select id="rm-every"><option value="year">매년</option><option value="">한 번</option></select></label>
-          <label style="grid-column:1/-1">할 일<input type="text" id="rm-title" required maxlength="80"></label>
-          <label style="grid-column:1/-1">메모<input type="text" id="rm-note" maxlength="300"></label>
-          <button class="btn sm" type="submit" style="grid-column:1/-1">추가</button>
-        </form>
+    <div class="card" id="semiCard">
+      <h2>반도체 수출 (관세청)</h2>
+      <span class="chip good" id="semiChip">불러오는 중</span>
+      <div class="kv">
+        <div><span class="k" id="semiK1">최근 월 반도체</span><span class="v num" id="semiPure">–</span><span class="note" id="semiPureSub"></span></div>
+        <div><span class="k">메모리 · HBM</span><span class="v num" id="semiMem">–</span><span class="note" id="semiMemSub"></span></div>
+        <div><span class="k">메모리 물량 (전월 대비)</span><span class="v num" id="semiKg">–</span><span class="note" id="semiKgSub"></span></div>
+      </div>
+      <div class="sig" id="semiEarly"></div>
+      <div class="seg" role="group" aria-label="반도체 그래프 종류">
+        <button type="button" data-sv="amt" aria-pressed="true">금액</button>
+        <button type="button" data-sv="yoy" aria-pressed="false">전년 대비</button>
+      </div>
+      <div class="seg" role="group" aria-label="반도체 그래프 기간">
+        <button type="button" data-sr="12" aria-pressed="false">1년</button>
+        <button type="button" data-sr="36" aria-pressed="true">3년</button>
+        <button type="button" data-sr="0" aria-pressed="false">전체</button>
+      </div>
+      <div class="legend" id="semiLegend"></div>
+      <div id="semiChart" role="img" aria-label="월별 반도체 수출 그래프"></div>
+      <details class="more"><summary>월별 표</summary>
+        <div class="table-wrap"><table>
+          <thead><tr><th>월</th><th>반도체</th><th>전년 대비</th><th>HBM</th><th>메모리 물량</th><th>신호</th></tr></thead>
+          <tbody id="semiTbl"></tbody>
+        </table></div>
       </details>
-      <p class="note" id="remMsg"></p>
-      <p class="note">14일 안에 다가오거나 지난 일정은 맨 위에 알림으로 뜹니다. '완료'를 누르면 매년 일정은 다음 해로 넘어가고, 한 번 일정은 사라집니다.</p>
+      <p class="note" id="semiAt"></p>
+      <p class="note">반도체 = 순수 반도체(집적회로 8542 + 개별소자 8541), 억 달러. 신호: 메모리 물량(무게)이 전월보다 줄면 '물량 둔화'(1차 조기경보), 금액까지 줄면 '금액 둔화'. HBM은 계약 물량이 남아 있는 동안 금액이 버티므로 물량이 먼저 꺾입니다. 물량 둔화가 2개월 이어지면 현황 탭에 알림이 뜹니다. 월별 확정치는 매월 15일경, 이달 잠정치는 11일·21일·다음 달 1일에 나오며 매일 10시에 확인합니다. HBM 값은 복합구조칩(MCP) 코드 전체라 HBM이 아닌 제품도 들어 있어, 과거 값은 참고용입니다.</p>
     </div>
+
   </section>
 
   <!-- 자산 -->
@@ -639,6 +674,7 @@ input:disabled{opacity:.75}
 <nav class="tabs" aria-label="화면" id="nav" hidden>
   <div class="in">
     <button type="button" id="t-home" data-tab="home" aria-current="page">현황</button>
+    <button type="button" id="t-market" data-tab="market">시장</button>
     <button type="button" id="t-asset" data-tab="asset">자산</button>
     <button type="button" id="t-input" data-tab="input">기록</button>
     <button type="button" id="t-rebal" data-tab="rebal">리밸런싱</button>
@@ -937,7 +973,7 @@ $('setForm').addEventListener('submit',async e=>{
 /* ---------- 탭·시나리오 ---------- */
 document.querySelectorAll('nav.tabs button').forEach(b=>b.addEventListener('click',()=>{
   document.querySelectorAll('nav.tabs button').forEach(x=>x.removeAttribute('aria-current')); b.setAttribute('aria-current','page');
-  ['home','asset','input','rebal','set'].forEach(t=>$('tab-'+t).hidden=t!==b.dataset.tab); window.scrollTo({top:0});
+  ['home','market','asset','input','rebal','set'].forEach(t=>$('tab-'+t).hidden=t!==b.dataset.tab); window.scrollTo({top:0});
   try{localStorage.setItem('tab',b.dataset.tab)}catch{}
 }));
 document.querySelectorAll('[data-sc]').forEach(b=>b.addEventListener('click',()=>{
@@ -1701,6 +1737,68 @@ $('remForm').addEventListener('submit',e=>{
   if(!r.date||!r.title) return;
   putRem([...REM,r],`'${r.title}' 일정을 추가했습니다.`).then(()=>{ $('rm-title').value=''; $('rm-note').value='' });
 });
+/* 반도체 수출 */
+let SEMI=null, SEMI_V='amt', SEMI_R=36;
+try{ SEMI_V=localStorage.getItem('semiV')||'amt'; SEMI_R=+(localStorage.getItem('semiR')??36) }catch{}
+const SEMI_SIG={ok:['확장','good'],vol:['물량 둔화','warn'],amt:['금액 둔화','bad']};
+const pctTxt=v=>v==null||!isFinite(v)?'–':`${v>=0?'+':''}${v.toFixed(1)}%`;
+function semiCalc(){
+  const R=(SEMI?.rows||[]).filter(r=>r.pure!=null), by={}; R.forEach(r=>by[r.m]=r);
+  const prevM=m=>{const k=ym(m)-1; return `${Math.floor(k/12)}-${String(k%12+1).padStart(2,'0')}`};
+  const yAgo=m=>`${+m.slice(0,4)-1}${m.slice(4)}`, ch=(a,b)=>a!=null&&b?(a/b-1)*100:null;
+  return R.map(r=>({...r, yoy:ch(r.pure,by[yAgo(r.m)]?.pure), mom:ch(r.pure,by[prevM(r.m)]?.pure),
+    hbmYoy:ch(r.hbm,by[yAgo(r.m)]?.hbm), kgMom:ch(r.memKg,by[prevM(r.m)]?.memKg), memYoy:ch(r.mem,by[yAgo(r.m)]?.mem)}));
+}
+function semiChartSVG(rows,mode){
+  if(rows.length<2) return '<p class="empty">데이터가 2개월 이상 있어야 그려집니다.</p>';
+  const W=640,H=230,L=44,R=12,T=14,B=26;
+  const S= mode==='yoy'
+    ? [{nm:'반도체',c:'var(--accent)',k:'yoy'},{nm:'메모리',c:'var(--warn)',k:'memYoy'}]
+    : [{nm:'반도체',c:'var(--accent)',k:'pure'},{nm:'메모리',c:'var(--warn)',k:'mem'},{nm:'HBM',c:'var(--bad)',k:'hbm'}];
+  const all=S.flatMap(s=>rows.map(r=>r[s.k]).filter(v=>v!=null&&isFinite(v)));
+  if(!all.length) return '<p class="empty">표시할 값이 없습니다.</p>';
+  let lo=Math.min(...all,0), hi=Math.max(...all); if(mode==='yoy'){ lo=Math.max(lo,-100); hi=Math.min(hi,300) } const pad=(hi-lo)*.08||1; hi+=pad; if(lo<0) lo-=pad;
+  const X=i=>L+i/(rows.length-1)*(W-L-R), Y=v=>T+(1-(Math.max(lo,Math.min(hi,v))-lo)/(hi-lo))*(H-T-B);
+  let s=`<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" font-family="IBM Plex Mono, monospace" font-size="11">`;
+  const st0=(hi-lo)/4, mg=10**Math.floor(Math.log10(st0)), stp=[1,2,2.5,5,10].map(x=>x*mg).find(x=>x>=st0);
+  for(let v=Math.ceil(lo/stp)*stp; v<=hi; v+=stp) s+=`<line x1="${L}" x2="${W-R}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--line)"/><text x="${L-6}" y="${Y(v)+4}" text-anchor="end" fill="var(--muted)">${Math.round(v)}${mode==='yoy'?'%':''}</text>`;
+  if(lo<0) s+=`<line x1="${L}" x2="${W-R}" y1="${Y(0)}" y2="${Y(0)}" stroke="var(--muted)" stroke-dasharray="3 3"/>`;
+  // 물량 둔화·금액 둔화 달은 아래에 표시
+  rows.forEach((r,i)=>{ if(r.sig!=='ok'&&mode==='amt') s+=`<rect x="${X(i)-1.5}" y="${H-B-4}" width="3" height="4" fill="${r.sig==='amt'?'var(--bad)':'var(--warn)'}"/>` });
+  for(const sr of [...S].reverse()){ let d='', pen=false;
+    rows.forEach((r,i)=>{ const v=r[sr.k]; if(v==null||!isFinite(v)){pen=false;return} d+=(pen?'L':'M')+X(i).toFixed(1)+','+Y(v).toFixed(1); pen=true });
+    s+=`<path d="${d}" fill="none" stroke="${sr.c}" stroke-width="${sr.k==='pure'||sr.k==='yoy'?2.4:1.6}" stroke-linejoin="round"/>` }
+  const yrs=rows.length>40; let lastX=-1e9;
+  rows.forEach((r,i)=>{ const x=X(i), lab= yrs? (r.m.endsWith('-01')?r.m.slice(0,4):null) : ((i%Math.ceil(rows.length/6)===0||i===rows.length-1)?r.m.slice(2).replace('-','.'):null);
+    if(lab&&x-lastX>48){ lastX=x; s+=`<text x="${Math.min(W-R-18,Math.max(L+18,x))}" y="${H-8}" text-anchor="middle" fill="var(--muted)">${lab}</text>` } });
+  const e=rows.at(-1), k0=S[0].k; if(e[k0]!=null) s+=`<circle cx="${X(rows.length-1)}" cy="${Y(e[k0])}" r="4" fill="var(--accent)"/>`;
+  $('semiLegend').innerHTML=S.map(x=>`<span><i style="background:${x.c}"></i>${x.nm}</span>`).join('')+(mode==='amt'?'<span><i style="background:var(--warn)"></i>아래 눈금: 둔화 달</span>':'');
+  return s+'</svg>';
+}
+function renderSemi(){
+  if(!$('semiCard')) return;
+  document.querySelectorAll('[data-sv]').forEach(b=>b.setAttribute('aria-pressed',b.dataset.sv===SEMI_V));
+  document.querySelectorAll('[data-sr]').forEach(b=>b.setAttribute('aria-pressed',+b.dataset.sr===SEMI_R));
+  const R=semiCalc(), chip=$('semiChip'), hb=$('semiHome');
+  if(!R.length){ chip.className='chip warn'; chip.textContent= SEMI?'데이터가 없습니다':'아직 수집 전입니다 (매일 10시 자동)'; $('semiChart').innerHTML=''; hb.hidden=true; return }
+  const e=R.at(-1); let streak=0; for(let i=R.length-1;i>=0&&R[i].kgMom!=null&&R[i].kgMom<0;i--) streak++;
+  const [lb,lv]=SEMI_SIG[e.sig]||SEMI_SIG.ok;
+  chip.className='chip '+(streak>=2?'bad':lv); chip.textContent=`${e.m.replace('-','.')} ${lb}${streak>=2?` · 물량 둔화 ${streak}개월 연속`:''}`;
+  hb.hidden=streak<2; if(streak>=2) hb.textContent=`반도체 메모리 물량이 ${streak}개월 연속 줄었습니다 (${e.m.replace('-','.')} 기준). 시장 탭에서 확인하세요.`;
+  $('semiK1').textContent=`${e.m.replace('-','.')} 반도체`;
+  $('semiPure').textContent=`${e.pure.toFixed(0)}억$`; $('semiPureSub').textContent=`전월 ${pctTxt(e.mom)} · 전년 ${pctTxt(e.yoy)}`;
+  $('semiMem').textContent=`${(e.mem??0).toFixed(0)} · ${(e.hbm??0).toFixed(0)}억$`; $('semiMemSub').textContent=`HBM 전년 ${pctTxt(e.hbmYoy)}`;
+  $('semiKg').textContent=pctTxt(e.kgMom); $('semiKg').className='v num '+(e.kgMom<0?'neg':'pos'); $('semiKgSub').textContent=`${Math.round((e.memKg||0)/1e3).toLocaleString('ko-KR')}톤`;
+  const E=SEMI.early, fc=E?.fc, st=fc?.stages?.at(-1);
+  $('semiEarly').innerHTML= E? `<div><span class="nm">이달 잠정 (${esc(E.period)})<span class="note">수출 전체 ${E.total?.toFixed(0)}억$ 중 반도체 ${E.share?.toFixed(0)}%${st?` · ${esc(st.p)} 속도면 월말 약 ${st.eEnd.toFixed(0)}억$ (조업일 ${fc.wd?.full}일 기준)`:''}${fc?.endAct!=null?` · 월말 잠정 ${fc.endAct.toFixed(0)}억$ (전월 ${pctTxt(fc.endMoM)})`:''}</span></span><span class="v ${E.semiYoY<0?'bad':'good'}">${E.semi?.toFixed(0)}억$<br><span class="note">전년 ${pctTxt(E.semiYoY)}</span></span></div>` : '';
+  const rows= SEMI_R? R.slice(-SEMI_R) : R;
+  $('semiChart').innerHTML=semiChartSVG(rows,SEMI_V);
+  $('semiTbl').innerHTML=[...R].slice(-24).reverse().map(r=>{ const [l,c]=SEMI_SIG[r.sig]||SEMI_SIG.ok;
+    return `<tr><td>${r.m.replace('-','.')}</td><td class="num">${r.pure.toFixed(0)}</td><td class="num ${r.yoy<0?'neg':'pos'}">${pctTxt(r.yoy)}</td><td class="num">${r.hbm!=null?r.hbm.toFixed(0):'–'}</td><td class="num ${r.kgMom<0?'neg':''}">${pctTxt(r.kgMom)}</td><td><span class="chip ${c}" style="padding:2px 8px;font-size:12px">${l}</span></td></tr>` }).join('');
+  $('semiAt').textContent=`${R[0].m.replace('-','.')}부터 ${R.length}개월 · 마지막 확인 ${SEMI.at?new Date(SEMI.at).toLocaleString('ko-KR',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}):'–'}`;
+}
+document.querySelectorAll('[data-sv]').forEach(b=>b.addEventListener('click',()=>{ SEMI_V=b.dataset.sv; try{localStorage.setItem('semiV',SEMI_V)}catch{} renderSemi() }));
+document.querySelectorAll('[data-sr]').forEach(b=>b.addEventListener('click',()=>{ SEMI_R=+b.dataset.sr; try{localStorage.setItem('semiR',SEMI_R)}catch{} renderSemi() }));
 /* 시장 경고 신호 */
 let SIG=null;
 // 저장된 값이 없을 때 쓰는 공개 시장 자료 (FINRA 신용매수 잔고, 조 달러 · 빅테크 2분기 실적)
@@ -1728,7 +1826,7 @@ function renderSig(){
   const chip=$('sigChip');
   chip.className='chip '+(bad>=2?'bad':bad||warn?'warn':'good');
   chip.textContent= bad===3?'3개 모두 켜짐 · 함께 하락 국면 신호': bad? `경고 ${bad}개${warn?` · 주의 ${warn}개`:''}`: warn? `주의 ${warn}개`:'조용함 · 사이클 진행 중';
-  const hb=$('sigHome'); hb.hidden=bad<2; if(bad>=2) hb.textContent=`시장 경고 신호 ${bad}개가 켜졌습니다 (${L.filter(x=>x.lv==='bad').map(x=>x.nm).join(', ')}). 현황 탭 아래에서 확인하세요.`;
+  const hb=$('sigHome'); hb.hidden=bad<2; if(bad>=2) hb.textContent=`시장 경고 신호 ${bad}개가 켜졌습니다 (${L.filter(x=>x.lv==='bad').map(x=>x.nm).join(', ')}). 시장 탭에서 확인하세요.`;
   const sg=SIG||SIG_SEED; if(!$('sg-q').value&&sg.capex){ $('sg-q').value=sg.capex.q||''; $('sg-dir').value=sg.capex.dir||'up'; $('sg-note').value=sg.capex.note||'' }
 }
 async function putSig(next,ok){
@@ -1791,11 +1889,13 @@ function renderAsset(){
 }
 document.querySelectorAll('[data-rg]').forEach(b=>b.addEventListener('click',()=>{RANGE=+b.dataset.rg; document.querySelectorAll('[data-rg]').forEach(x=>x.setAttribute('aria-pressed',x===b)); renderAsset()}));
 async function loadAll(){
-  const [st,dy,pr]=await Promise.all([getFile('data/state.enc.json'),getFile('data/daily.enc.json'),getFile('data/prices.enc.json')]);
+  const [st,dy,pr,se]=await Promise.all([getFile('data/state.enc.json'),getFile('data/daily.enc.json'),getFile('data/prices.enc.json'),getFile('data/semi.enc.json').catch(()=>null)]);
   if(!st) throw Object.assign(new Error('no state'),{code:'no_state'});
   STATE=await openWeb(st.env,GH.viewPw); STATE_SHA=st.sha;
   DAILY= dy? await openWeb(dy.env,GH.viewPw) : {records:[]};
   PRICES= pr? await openWeb(pr.env,GH.viewPw) : null; PRICES_SHA=pr?.sha||null; LOADED_AT=Date.now();
+  try{ SEMI= se? await openWeb(se.env,GH.viewPw) : null }catch{ SEMI=null }
+  renderSemi();
 }
 /* 열어 둔 화면도 평일 20:30(한국 시간)에 자동으로 다시 불러옴. 가격 조회 Action(20:10)이 늦으면 22:00까지 5분마다 다시 확인 */
 let AUTO_REQ=0;  // 앱이 대신 가격 조회를 요청한 날(20:30 시각)
