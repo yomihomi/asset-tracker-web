@@ -724,6 +724,10 @@ function mergedRecs(){
   if(!saved.length||typeof STATE==='undefined'||!STATE) return saved;
   const have=new Set(saved.map(r=>r.month)), out=[...saved], now=todayStr().slice(0,7);
   for(let m=nextYm(saved[0].month); m<=now; m=nextYm(m)) if(!have.has(m)){ const a=autoRecord(m); if(a) out.push(a) }
+  // 이번 달은 저장된 기록이 있어도 잔액은 지금 평가액, 적립금은 저장값과 입금 기록 중 항목별 큰 값
+  const i=out.findIndex(r=>r.month===now&&!r._auto), live=i>=0? autoRecord(now) : null;
+  if(live){ const sa=out[i].add||{}, la=live.add, mx=f=>Math.max(n(sa[f]),n(la[f]));
+    out[i]={...out[i],bal:live.bal,add:{pension:mx('pension'),dc:mx('dc'),other:mx('other'),once:mx('once')},_live:true} }
   return out.sort((a,b)=>a.month<b.month?-1:1);
 }
 function addOf(r){return n(r.add?.pension)+n(r.add?.dc)+n(r.add?.other)+n(r.add?.once)}  // 수익 계산용 입금 합계(일회성 포함)
@@ -899,7 +903,7 @@ function renderHistory(d){
   const tb=$('histBody');
   if(!d){tb.innerHTML='<tr><td colspan="5" class="empty">아직 기록이 없습니다.</td></tr>';return}
   const now=todayStr().slice(0,7);
-  tb.innerHTML=[...d.rows].reverse().map(x=>`<tr class="clickable" data-m="${x.r.month}" tabindex="0"><td>${x.r.month.replace('-','.')}${x.r._auto?`<span class="tag">${x.r.month===now?'진행 중':'자동'}</span>`:x.r.note?' ·':''}</td><td class="num">${won(x.V1)}</td><td class="num">${x.C===null?'–':won(x.C)}</td><td class="num ${x.gain>0?'pos':x.gain<0?'neg':''}">${x.gain===null?'–':won(x.gain)}</td><td class="num ${x.ret>0?'pos':x.ret<0?'neg':''}">${x.ret===null?'기준':pct(x.ret)}</td></tr>`).join('');
+  tb.innerHTML=[...d.rows].reverse().map(x=>`<tr class="clickable" data-m="${x.r.month}" tabindex="0"><td>${x.r.month.replace('-','.')}${x.r._auto||x.r._live?`<span class="tag">${x.r.month===now?'진행 중':'자동'}</span>`:x.r.note?' ·':''}</td><td class="num">${won(x.V1)}</td><td class="num">${x.C===null?'–':won(x.C)}</td><td class="num ${x.gain>0?'pos':x.gain<0?'neg':''}">${x.gain===null?'–':won(x.gain)}</td><td class="num ${x.ret>0?'pos':x.ret<0?'neg':''}">${x.ret===null?'기준':pct(x.ret)}</td></tr>`).join('');
 }
 
 /* ---------- 입력 폼 ---------- */
@@ -916,7 +920,7 @@ function fillForm(rec,asNew){
   $('f-note').value= asNew? '' : (rec?.note||'');
   editing= asNew||rec?._auto? null : rec?.month||null;
   $('delRow').hidden=!editing; $('delLabel').textContent= editing? `저장된 ${editing.replace('-','년 ')}월 기록입니다. 삭제하면 자동 계산값으로 돌아갑니다.`:'';
-  $('recTitle').textContent= rec? `${(rec.month||'').replace('-','년 ')}월 기록 고치기 (만원) · ${rec._auto?'지금은 자동 계산값':'저장된 기록'}` : '월 기록 고치기 (만원)';
+  $('recTitle').textContent= rec? `${(rec.month||'').replace('-','년 ')}월 기록 고치기 (만원) · ${rec._auto?'지금은 자동 계산값':rec._live?'이번 달은 잔액을 지금 평가액으로 계산':'저장된 기록'}` : '월 기록 고치기 (만원)';
   $('delBtn').textContent='삭제'; $('delBtn').dataset.armed='';
   $('f-month').disabled=!adding;
   if(adding){ $('f-month').value=''; $('recTitle').textContent='월 기록 추가 (만원)'; $('fillFromAcct').hidden=true }
