@@ -2011,8 +2011,8 @@ $('depList').addEventListener('click',async e=>{
   if(e.target.closest('[data-dsave]')){
     const g=k=>row.querySelector(`[data-k="${k}"]`).value, amt=Math.round(n(g('amount'))), date=g('date');
     if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||!amt) return msg($('depMsg'),'날짜와 금액을 확인하세요.',true);
-    const doc=clone(p); applySlot(doc,d.toSlot||'cash',amt-n(d.amount)); doc.deposits[idx]={...d,date,type:g('type'),amount:amt};
-    try{ await putPF(acct,doc); msg($('depMsg'),`입금 기록을 고쳤습니다. ${p.name||acct} 예수금 ${amt-n(d.amount)>=0?'+':'−'}${wonF(Math.abs(amt-n(d.amount)))}`) }catch(err){ msg($('depMsg'),saveErr(err),true) }
+    const doc=clone(p); if(!d.noCash) applySlot(doc,d.toSlot||'cash',amt-n(d.amount)); doc.deposits[idx]={...d,date,type:g('type'),amount:amt};
+    try{ await putPF(acct,doc); msg($('depMsg'), d.noCash? '입금 기록을 고쳤습니다. (기록만 있는 입금이라 예수금은 그대로)' : `입금 기록을 고쳤습니다. ${p.name||acct} 예수금 ${amt-n(d.amount)>=0?'+':'−'}${wonF(Math.abs(amt-n(d.amount)))}`) }catch(err){ msg($('depMsg'),saveErr(err),true) }
     return;
   }
   const del=e.target.closest('[data-ddel]'); if(!del) return;
@@ -2027,8 +2027,8 @@ $('depList').addEventListener('click',async e=>{
       if(q&&j>=0){ const b=clone(q), e=q.deposits[j]; undo(b,e); b.deposits.splice(j,1); await putPF(other,b) }
       msg($('depMsg'), q&&j>=0? '계좌 간 이동을 양쪽 모두 되돌렸습니다.' : '이 계좌의 이동 기록을 되돌렸습니다. 상대 계좌 기록을 찾지 못해 그쪽 예수금은 직접 확인하세요.', !(q&&j>=0));
     } else {
-      const a=clone(p); applySlot(a,d.toSlot||'cash',-n(d.amount)); a.deposits.splice(idx,1); await putPF(acct,a);
-      msg($('depMsg'),`입금 기록을 삭제했습니다. ${p.name||acct} 예수금 ${n(d.amount)>=0?'−':'+'}${wonF(Math.abs(n(d.amount)))}`);
+      const a=clone(p); if(!d.noCash) applySlot(a,d.toSlot||'cash',-n(d.amount)); a.deposits.splice(idx,1); await putPF(acct,a);
+      msg($('depMsg'), d.noCash? '입금 기록을 삭제했습니다. (기록만 있는 입금이라 예수금은 그대로)' : `입금 기록을 삭제했습니다. ${p.name||acct} 예수금 ${n(d.amount)>=0?'−':'+'}${wonF(Math.abs(n(d.amount)))}`);
     }
   }catch(err){ msg($('depMsg'),saveErr(err),true) }
 });
