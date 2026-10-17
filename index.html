@@ -248,6 +248,7 @@ input:disabled{opacity:.75}
   <section id="tab-home" class="wrap-inner" style="display:flex;flex-direction:column;gap:14px">
     <div class="banner" id="stHome" hidden></div>
     <div class="banner" id="satHome" hidden></div>
+    <div class="banner" id="rbHome" hidden></div>
     <div class="banner" id="remHome" hidden></div>
     <div class="banner" id="sigHome" hidden></div>
     <div class="banner" id="semiHome" hidden></div>
@@ -530,6 +531,7 @@ input:disabled{opacity:.75}
         <label style="flex:2;min-width:0">옮길 예정이라 남겨둘 일반계좌 RP (원)<input type="number" inputmode="numeric" step="any" id="bdReserve"></label>
         <button class="btn ghost sm" type="button" id="bdReserveSave" style="align-self:flex-end">저장</button>
       </div>
+      <span class="chip good" id="bdSignal">–</span>
       <div class="seg" role="group" aria-label="계산 방식">
         <button type="button" data-bmd="buy" aria-pressed="true">매수 전용</button>
         <button type="button" data-bmd="full" aria-pressed="false">전체 리밸런싱</button>
@@ -608,7 +610,7 @@ input:disabled{opacity:.75}
       <fieldset>
         <legend>계좌 설정</legend>
         <label>계좌 이름<input type="text" id="rb-name" maxlength="20"></label>
-        <label>전체 리밸런싱 신호 (±%p)<input type="number" inputmode="decimal" id="rb-band" step="any"></label>
+        <label>전체 리밸런싱 신호 (±%p, 목표의 25%가 더 작으면 그쪽)<input type="number" inputmode="decimal" id="rb-band" step="any"></label>
         <label class="full chk"><input type="checkbox" id="rb-lock"> 목표 % 잠금 <span class="note">(실수로 바뀌지 않게. 바꿀 때만 잠깐 풀기)</span></label>
       </fieldset>
       <div class="row">
@@ -1007,6 +1009,11 @@ function depMonthly(){
   return {by,start};
 }
 function wSum(p){ return (p.items||[]).reduce((a,x)=>a+n(x.w),0) }
+// 전체 리밸런싱 신호 폭: ±band%p 와 목표 비중의 25% 중 작은 쪽 (5/25 규칙). 목표 0%는 ±band%p
+const driftLim=(w,band)=> n(w)>0? Math.min(band,n(w)*0.25) : band;
+// 이탈 종목 목록 [{name,w,now,lim}] — 이탈 정도(벗어난 폭/허용 폭)가 큰 순서
+function driftList(rows,band){ return rows.map(r=>({...r,lim:driftLim(r.w,band)})).filter(r=>Math.abs(r.now-n(r.w))>r.lim+1e-9).sort((a,b)=>Math.abs(b.now-n(b.w))/b.lim-Math.abs(a.now-n(a.w))/a.lim) }
+const driftTxt=r=>`${r.name} ${r.now.toFixed(1)}% (목표 ${n(r.w)}% ±${+r.lim.toFixed(2)}%p)`;
 function wsSums(p){ const it=(p.items||[]).filter(x=>Array.isArray(x.ws)); if(!it.length) return null;
   const k=Math.max(...it.map(x=>x.ws.length)); return Array.from({length:k},(_,j)=>it.reduce((a,x)=>a+n(x.ws[j]),0)) }
 const stageNm=j=>sn(ST?.stages?.[j]?.name||`${j+1}단계`);
@@ -1086,13 +1093,12 @@ function rbCalc(){
   const cashAfter=n(draft.cash)-buy+sell, totAfter=after.reduce((a,b)=>a+b,0)+cashAfter;
   $('rbTot').textContent=wonF(r.tot0+n(draft.cashUsd)*n(PRICES?.fx)); $('rbBuy').textContent=wonF(buy); $('rbSell').textContent=wonF(sell);
   $('rbLeft').textContent=wonF(cashAfter); $('rbLeft').style.color= cashAfter<0?'var(--bad)':'';
-  let maxDr=0, maxNm='';
+  const drifts=driftList(it.map((x,i)=>({name:x.name,w:x.w,now:r.tot0? r.val[i]/r.tot0*100:0})),band);
   it.forEach((x,i)=>{
-    const nowW=r.tot0? r.val[i]/r.tot0*100:0, aftW=totAfter? after[i]/totAfter*100:0, dr=Math.abs(nowW-n(x.w));
-    if(dr>maxDr){maxDr=dr;maxNm=x.name}
+    const nowW=r.tot0? r.val[i]/r.tot0*100:0, aftW=totAfter? after[i]/totAfter*100:0, lim=driftLim(x.w,band), out=Math.abs(nowW-n(x.w))>lim+1e-9;
     const el=$('ir-'+i); if(!el) return;
-    el.closest('.item').classList.toggle('drift',dr>band);
-    el.innerHTML=`<span class="num">현재 ${nowW.toFixed(1)}% → 주문 후 ${aftW.toFixed(1)}%</span><span class="num">목표 ${n(x.w)}%</span>`;
+    el.closest('.item').classList.toggle('drift',out);
+    el.innerHTML=`<span class="num">현재 ${nowW.toFixed(1)}% → 주문 후 ${aftW.toFixed(1)}%</span><span class="num">목표 ${n(x.w)}% <span class="note">(±${+lim.toFixed(2)}%p)</span>${out?' <b style="color:var(--warn)">이탈</b>':''}</span>`;
     const o=ORD[i], oa=$('oa-'+i), amt=n(o.q)*n(o.p);
     if(o.side==='sell'&&n(o.q)>n(x.qty)){oa.className='oa num warn'; oa.textContent=`보유 ${n(x.qty)}주보다 많이 팔 수 없습니다`}
     else if(o.side==='none'||!amt){oa.className='oa num'; oa.textContent='유지'}
@@ -1101,14 +1107,14 @@ function rbCalc(){
   });
   const sig=$('rbSignal');
   if(cashAfter<0){sig.className='chip bad';sig.textContent=`예수금이 ${wonF(-cashAfter)} 부족합니다 · 수량이나 체결가를 확인하세요`}
-  else if(maxDr>band){sig.className='chip warn';sig.textContent=`${maxNm} ${maxDr.toFixed(1)}%p 이탈 · 전체 리밸런싱 권장`}
-  else{sig.className='chip good';sig.textContent=`모든 종목 ±${band}%p 이내 · 매수 전용으로 충분`}
+  else if(drifts.length){sig.className='chip warn';sig.textContent=`${driftTxt(drifts[0])}${drifts.length>1?` 외 ${drifts.length-1}종목`:''} 이탈 · 전체 리밸런싱 권장`}
+  else{sig.className='chip good';sig.textContent=`모든 종목 허용 폭 이내 · 매수 전용으로 충분`}
   const ws=wSum(draft), ss=wsSums(draft), over=v=>v>100+TOL;
   const part=(label,v)=>`<span style="${over(v)?'color:var(--bad);font-weight:600':''}">${label} ${pct1(v)}%</span>`;
   $('rbWsum').innerHTML= `목표 % 합계 ${part('',ws).replace('> ','>')}${!over(ws)&&ws<100-TOL?` · 나머지 ${pct1(100-ws)}%는 예수금으로 둡니다`:''}`
     + (ss? `<br>단계별 합계: ${ss.map((v,j)=>part(esc(stageNm(j)),v)).join(' · ')}`:'')
     + (over(ws)||(ss&&ss.some(over))? `<br><b style="color:var(--bad)">100%를 넘는 합계가 있어 저장할 수 없습니다.</b>` : '')
-    + `<br>주황 테두리는 목표에서 ±${band}%p 넘게 벗어난 종목입니다.`;
+    + `<br>주황 테두리는 허용 폭을 넘게 벗어난 종목입니다. 허용 폭은 ±${band}%p와 목표 비중의 25% 중 작은 쪽입니다 (예: 목표 10% → ±2.5%p).`;
   $('rbWsum').style.color='';
 }
 function rbDirty(){dirty=true; msg($('rbMsg'),'저장하지 않은 변경이 있습니다.')}
@@ -1598,7 +1604,7 @@ function bundlePlan(){
         cashAll+=use; if(isManual(x)) spend[m.id]+=use }
       else { const c=x.cls||autoCls(x); otherCls[c]=(otherCls[c]||0)+v } } }
   const wCash=model.filter(t=>t.cls==='cash').reduce((a,t)=>a+n(t.w),0), cashT=B*wCash/100;
-  const items=model.filter(t=>t.cls!=='cash').map(t=>({...t,p:priceOf(t.code),T:B*n(t.w)/100,H:H[t.code]||0}));
+  const items=model.filter(t=>t.cls!=='cash').map(t=>({...t,p:priceOf(t.code),T:B*n(t.w)/100,H:H[t.code]||0,H0:H[t.code]||0}));
   const orders=[];
   if(BMD==='full'){ // 넘치는 종목: 세금 없는 연금저축2·ISA부터 매도
     for(const t of items){ let ex=t.H-t.T; if(!t.p||ex<t.p) continue;
@@ -1623,6 +1629,7 @@ function bundlePlan(){
   const merged=[]; for(const o of orders){ const e=merged.find(x=>x.acct===o.acct&&x.code===o.code&&x.side===o.side); if(e){ e.q+=o.q; e.reloc=e.reloc||o.reloc } else merged.push({...o}) }
   return {b,mem,model,items,orders:merged,B,cashT,cashAll,otherCls,wCash,reserve:reserve-resLeft};
 }
+const bundleDrifts=P=> P&&P.B? driftList(P.items.map(t=>({name:t.name,w:t.w,now:t.H0/P.B*100})),n(P.b.band||5)) : [];
 const bkey=o=>`${o.acct}|${o.code}|${o.side}`;
 function renderBundle(){
   const show=RBM==='bundle'; $('bdCard').hidden=!show; ['rbCardA','rbCardB','rbCardC'].forEach(id=>$(id).hidden=show);
@@ -1636,6 +1643,9 @@ function renderBundle(){
   const ords=P.orders.map(o=>{ const e=BORD[bkey(o)]; return e?.edited? {...o,q:e.q,p:e.p} : o });
   for(const k of Object.keys(BORD)) if(BORD[k].edited&&!ords.some(o=>bkey(o)===k)){ const [acct,code,side]=k.split('|'); const t=P.items.find(x=>x.code===code); if(t) ords.push({acct,code,name:t.name,side,q:BORD[k].q,p:BORD[k].p}) }
   let buy=0,sell=0; ords.forEach(o=>{ const a=n(o.q)*n(o.p); if(o.side==='buy') buy+=a; else sell+=a });
+  const bdr=bundleDrifts(P), bs=$('bdSignal');
+  if(bdr.length){ bs.className='chip warn'; bs.textContent=`${bdr.map(driftTxt).join(' · ')} 이탈 · 전체 리밸런싱 권장` }
+  else { bs.className='chip good'; bs.textContent='모든 종목 허용 폭 이내 · 매수 전용으로 충분' }
   $('bdTot').textContent=wonF(P.B); $('bdBuy').textContent=wonF(buy); $('bdSell').textContent=wonF(sell);
   const cashAfter=P.cashAll+ (P.orders.reduce((a,o)=>a+(o.side==='buy'?n(o.q)*n(o.p):-n(o.q)*n(o.p)),0)) - buy + sell;
   $('bdCash').textContent=`${wonF(cashAfter)} (${wonF(P.cashT)})`;
@@ -1847,6 +1857,18 @@ $('sgSaveC').addEventListener('click',()=>{
   if(!/^\d{4}-Q[1-4]$/.test(q)) return msg($('sigMsg'),'분기를 2026-Q3 형식으로 입력하세요.',true);
   putSig({...clone(SIG||SIG_SEED),capex:{q,dir:$('sg-dir').value,note:$('sg-note').value.trim()}},`${q} 빅테크 투자 전망(${SIG_DIR[$('sg-dir').value]})을 저장했습니다.`);
 });
+function renderRbHome(){
+  const hb=$('rbHome'); if(!STATE||!PRICES) return;
+  const b=bdDoc(), mem=new Set((b?.members||[]).map(m=>m.id)), out=[];
+  for(const [id,p] of Object.entries(PF).sort((a,c)=>n(a[1].order)-n(c[1].order))){
+    if(mem.has(id)||!(wSum(p)>0)) continue;
+    const r=rbPlan(p,0,'buy'); if(!r.tot0) continue;
+    const d=driftList((p.items||[]).map((x,i)=>({name:x.name,w:x.w,now:r.val[i]/r.tot0*100})),n(p.band||5));
+    if(d.length) out.push(`${esc(p.name||id)}: ${d.map(x=>esc(driftTxt(x))).join(', ')}`) }
+  if(b){ const d=bundleDrifts(bundlePlan()); if(d.length) out.push(`묶음: ${d.map(x=>esc(driftTxt(x))).join(', ')}`) }
+  hb.hidden=!out.length;
+  if(out.length) hb.innerHTML=`<b>목표 비중에서 많이 벗어난 종목이 있습니다 · 리밸런싱 탭에서 '전체 리밸런싱'으로 맞추세요</b><br>${out.join('<br>')}`;
+}
 function renderSat(){
   if(!STATE) return;
   let total=0, sat=0, wait=0; const sec={}, list=[];
@@ -1885,7 +1907,7 @@ function renderAsset(){
   const from= RANGE? new Date(Date.now()-RANGE*864e5).toISOString().slice(0,10) : '';
   $('dayChart').innerHTML=dayChartSVG(recs.filter(r=>r.date>=from));
   $('dayNote').textContent=`기록 ${recs.length}일 (${recs[0]?.date||'–'} ~ ${last?.date||'–'}). 엑셀에서 가져온 기록은 주 단위이고, 이후는 평일 장 마감 후 자동으로 쌓입니다. 주황 점은 기간 중 최고치입니다.`;
-  renderCls(); renderSat();
+  renderCls(); renderSat(); renderRbHome();
   $('acctList').innerHTML=ports.map(([id,p])=>{
     const v=live[id], pv=prevRec?.accounts?.[id], d= pv!=null? v-pv : null;
     return `<div class="acct"><span class="nm">${esc(p.name||id)}${p.track===false?' <span class="note">· 추이 제외</span>':''}</span><span class="vv"><span class="num">${won(v/1e4)}</span>${d!=null?`<span class="dv num ${d>=0?'pos':'neg'}">${d>=0?'+':''}${won(d/1e4)}</span>`:''}${now&&p.track!==false?`<span class="dv note">${(v/now*100).toFixed(1)}%</span>`:''}</span></div>`;
@@ -2068,7 +2090,7 @@ function startApp(){
     RECS=q.docs.map(x=>x.data());
     render();
   });
-  DB.collection('bundles').onSnapshot(()=>renderBundle());
+  DB.collection('bundles').onSnapshot(()=>{renderBundle(); renderRbHome()});
   DB.doc('reminders/main').onSnapshot(s=>{ REM=s.exists?(s.data().items||[]):[]; renderRem() });
   DB.doc('signals/main').onSnapshot(s=>{ SIG=s.exists?s.data():null; renderSig() });
   DB.doc('strategy/main').onSnapshot(s=>{ ST=s.exists?s.data():null; stIdx=clone(ST?.indices||[]); stRenderAll(); if(!dirty&&draft) rbRenderAll() });
