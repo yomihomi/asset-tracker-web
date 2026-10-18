@@ -418,6 +418,7 @@ input:disabled{opacity:.75}
         <button type="button" data-ap="day" aria-pressed="true">전일 대비</button>
         <button type="button" data-ap="week" aria-pressed="false">이번 주</button>
         <button type="button" data-ap="month" aria-pressed="false">이번 달</button>
+        <button type="button" data-ap="all" aria-pressed="false">전체 기간</button>
       </div>
       <p class="note" id="apBase"></p>
       <div id="acctList"></div>
@@ -1918,6 +1919,7 @@ function renderAsset(){
   $('dayNote').textContent=`기록 ${recs.length}일 (${recs[0]?.date||'–'} ~ ${last?.date||'–'}). 엑셀에서 가져온 기록은 주 단위이고, 이후는 평일 장 마감 후 자동으로 쌓입니다. 주황 점은 기간 중 최고치입니다.`;
   renderCls(); renderSat(); renderRbHome();
   // 기간별 평가손익: 기준 = 전일(직전 기록) / 이번 주(월요일 전 마지막 기록) / 이번 달(1일 전 마지막 기록)
+  if(AP==='all') return renderAcctAll(ports,live,now);
   const base= AP==='day'? prevRec : recs.filter(r=>r.date<apStart(AP)).at(-1);
   $('apBase').textContent= base? `기준: ${base.date} 일별 기록${base.src==='excel'?' (엑셀 주간 기록)':''} → 지금` : '비교할 기준 기록이 없습니다.';
   const pc=(g,b)=> b>0? ` (${g>=0?'+':''}${(g/b*100).toFixed(2)}%)` : '';
@@ -1926,6 +1928,18 @@ function renderAsset(){
     const open=AP_OPEN.has(id);
     return `<div class="acct clickable" data-acct="${esc(id)}" role="button" tabindex="0" aria-expanded="${open}"><span class="nm">${esc(p.name||id)}<span class="car">${open?'▾':'▸'}</span>${p.track===false?' <span class="note">· 추이 제외</span>':''}</span><span class="vv"><span class="num">${won(v/1e4)}</span>${g!=null?`<span class="dv num ${g>=0?'pos':'neg'}">${g>=0?'+':''}${won(g/1e4)}${pc(g,den)}</span>`:''}${f&&g!=null?`<span class="dv note">입출금 ${f>=0?'+':''}${won(f/1e4)} 제외</span>`:''}${now&&p.track!==false?`<span class="dv note">비중 ${(v/now*100).toFixed(1)}%</span>`:''}</span></div>`
       + (open? acctItemsHTML(p,base,g) : '');
+  }).join('');
+}
+// 전체 기간: 원금 대비 평가금액. 원금 = 입력값 + 입력일 뒤 저축·일회성 입금·출금·계좌 간 이동 (배당·이자·보정은 제외)
+function principalNow(p){ const b=p.principal; if(!b||!(n(b.amount)>0)) return null;
+  return n(b.amount)+(p.deposits||[]).filter(d=>String(d.date)>String(b.asOf||'')&&['new','once','xfer'].includes(d.type)).reduce((a,d)=>a+n(d.amount),0) }
+function renderAcctAll(ports,live,now){
+  let tv=0,tp=0; ports.forEach(([id,p])=>{ const pr=principalNow(p); if(pr!=null){ tv+=live[id]; tp+=pr } });
+  $('apBase').textContent= tp? `원금 입력 계좌 합계: 평가 ${won(tv/1e4)} · 원금 ${won(tp/1e4)} · ${tv>=tp?'+':''}${won((tv-tp)/1e4)} (${((tv/tp-1)*100).toFixed(2)}%)` : '계좌를 눌러 원금을 입력하세요.';
+  $('acctList').innerHTML=ports.map(([id,p])=>{
+    const v=live[id], pr=principalNow(p), g= pr!=null? v-pr : null, open=AP_OPEN.has(id);
+    return `<div class="acct clickable" data-acct="${esc(id)}" role="button" tabindex="0" aria-expanded="${open}"><span class="nm">${esc(p.name||id)}<span class="car">${open?'▾':'▸'}</span></span><span class="vv"><span class="num">${won(v/1e4)}</span>${g!=null?`<span class="dv num ${g>=0?'pos':'neg'}">${g>=0?'+':''}${won(g/1e4)} (${g>=0?'+':''}${(g/pr*100).toFixed(2)}%)</span><span class="dv note">원금 ${won(pr/1e4)}</span>`:'<span class="dv note">원금 미입력</span>'}</span></div>`
+      + (open? `<div class="acct-items"><div class="lg-ed" data-prin="${esc(id)}"><label style="grid-column:1/-1">원금 (원, 오늘 기준)<input type="number" inputmode="numeric" step="1" min="0" data-k="amt" value="${pr!=null?Math.round(pr):''}"></label><button class="btn sm" type="button" data-prin-save style="grid-column:1/-1">원금 저장</button></div>${p.principal?`<p class="note">입력일 ${esc(p.principal.asOf||'')}. 이후 '저축'·'일회성' 입금, 출금, 계좌 간 이동은 원금에 자동으로 더하거나 뺍니다.</p>`:''}</div>` : '');
   }).join('');
 }
 // 기간 시작일(한국 시간): 이번 주 = 월요일, 이번 달 = 1일
@@ -1954,9 +1968,17 @@ function acctItemsHTML(p,base,acctGain){
     ${rest!=null&&Math.abs(rest)>=1e4?`<div><span class="note">예수금·기타 (환율·배당 등)</span><span class="r num note">${rest>=0?'+':''}${won(rest/1e4)}</span></div>`:''}</div>`;
 }
 let AP='day'; const AP_OPEN=new Set();
-try{ const v=localStorage.getItem('ap'); if(['day','week','month'].includes(v)) AP=v }catch{}
+try{ const v=localStorage.getItem('ap'); if(['day','week','month','all'].includes(v)) AP=v }catch{}
 document.querySelectorAll('[data-ap]').forEach(b=>{ b.setAttribute('aria-pressed',b.dataset.ap===AP); b.addEventListener('click',()=>{ AP=b.dataset.ap; document.querySelectorAll('[data-ap]').forEach(x=>x.setAttribute('aria-pressed',x===b)); try{localStorage.setItem('ap',AP)}catch{} renderAsset() }) });
-$('acctList').addEventListener('click',e=>{ const r=e.target.closest('[data-acct]'); if(!r) return; const id=r.dataset.acct; AP_OPEN.has(id)?AP_OPEN.delete(id):AP_OPEN.add(id); renderAsset() });
+$('acctList').addEventListener('click',async e=>{
+  const sv=e.target.closest('[data-prin-save]');
+  if(sv){ const box=sv.closest('[data-prin]'), id=box.dataset.prin, amt=Math.round(n(box.querySelector('[data-k="amt"]').value));
+    if(!(amt>0)) return msg($('asMsg'),'원금을 입력하세요.',true);
+    try{ sv.disabled=true; sv.textContent='저장 중…'; await DB.doc('portfolios/'+id).set({...PF[id],principal:{amount:amt,asOf:todayStr()},updatedAt:new Date().toISOString()}); msg($('asMsg'),`${PF[id]?.name||id} 원금을 ${wonF(amt)}으로 저장했습니다.`) }
+    catch(err){ msg($('asMsg'),saveErr(err),true) } finally{ renderAsset() }
+    return }
+  if(e.target.closest('[data-prin]')) return;
+  const r=e.target.closest('[data-acct]'); if(!r) return; const id=r.dataset.acct; AP_OPEN.has(id)?AP_OPEN.delete(id):AP_OPEN.add(id); renderAsset() });
 $('acctList').addEventListener('keydown',e=>{ if((e.key==='Enter'||e.key===' ')&&e.target.matches('[data-acct]')){ e.preventDefault(); e.target.click() } });
 document.querySelectorAll('[data-rg]').forEach(b=>b.addEventListener('click',()=>{RANGE=+b.dataset.rg; document.querySelectorAll('[data-rg]').forEach(x=>x.setAttribute('aria-pressed',x===b)); renderAsset()}));
 async function loadAll(){
