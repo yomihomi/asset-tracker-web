@@ -1933,13 +1933,20 @@ function renderAsset(){
 // 전체 기간: 원금 대비 평가금액. 원금 = 입력값 + 입력일 뒤 저축·일회성 입금·출금·계좌 간 이동 (배당·이자·보정은 제외)
 function principalNow(p){ const b=p.principal; if(!b||!(n(b.amount)>0)) return null;
   return n(b.amount)+(p.deposits||[]).filter(d=>String(d.date)>String(b.asOf||'')&&['new','once','xfer'].includes(d.type)).reduce((a,d)=>a+n(d.amount),0) }
+// 연평균 수익률 (추정): 입금이 시작 달부터 지금까지 고르게 들어왔다고 보고, 평균 투자 기간 = 경과 기간의 절반(최소 1년)으로 연환산
+function annRet(v,pr,since){ if(!since||!(pr>0)||!(v>0)) return null;
+  const [y,m]=String(since).split('-').map(Number), now=new Date(Date.now()+9*3600e3);
+  const yrs=((now.getUTCFullYear()-y)*12+(now.getUTCMonth()+1-m))/12 + now.getUTCDate()/365;
+  if(!(yrs>0)) return null; if(yrs<1) return {short:true,yrs};
+  return {r:Math.pow(v/pr,1/Math.max(1,yrs/2))-1,yrs} }
+const annTxt=a=> !a? '' : a.short? '연평균: 1년 미만' : `연평균 약 ${a.r>=0?'+':''}${(a.r*100).toFixed(1)}% (${a.yrs.toFixed(1)}년)`;
 function renderAcctAll(ports,live,now){
   let tv=0,tp=0; ports.forEach(([id,p])=>{ const pr=principalNow(p); if(pr!=null){ tv+=live[id]; tp+=pr } });
   $('apBase').textContent= tp? `원금 입력 계좌 합계: 평가 ${won(tv/1e4)} · 원금 ${won(tp/1e4)} · ${tv>=tp?'+':''}${won((tv-tp)/1e4)} (${((tv/tp-1)*100).toFixed(2)}%)` : '계좌를 눌러 원금을 입력하세요.';
   $('acctList').innerHTML=ports.map(([id,p])=>{
     const v=live[id], pr=principalNow(p), g= pr!=null? v-pr : null, open=AP_OPEN.has(id);
-    return `<div class="acct clickable" data-acct="${esc(id)}" role="button" tabindex="0" aria-expanded="${open}"><span class="nm">${esc(p.name||id)}<span class="car">${open?'▾':'▸'}</span></span><span class="vv"><span class="num">${won(v/1e4)}</span>${g!=null?`<span class="dv num ${g>=0?'pos':'neg'}">${g>=0?'+':''}${won(g/1e4)} (${g>=0?'+':''}${(g/pr*100).toFixed(2)}%)</span><span class="dv note">원금 ${won(pr/1e4)}</span>`:'<span class="dv note">원금 미입력</span>'}</span></div>`
-      + (open? `<div class="acct-items"><div class="lg-ed" data-prin="${esc(id)}"><label style="grid-column:1/-1">원금 (원, 오늘 기준)<input type="number" inputmode="numeric" step="1" min="0" data-k="amt" value="${pr!=null?Math.round(pr):''}"></label><button class="btn sm" type="button" data-prin-save style="grid-column:1/-1">원금 저장</button></div>${p.principal?`<p class="note">입력일 ${esc(p.principal.asOf||'')}. 이후 '저축'·'일회성' 입금, 출금, 계좌 간 이동은 원금에 자동으로 더하거나 뺍니다.</p>`:''}</div>` : '');
+    return `<div class="acct clickable" data-acct="${esc(id)}" role="button" tabindex="0" aria-expanded="${open}"><span class="nm">${esc(p.name||id)}<span class="car">${open?'▾':'▸'}</span></span><span class="vv"><span class="num">${won(v/1e4)}</span>${g!=null?`<span class="dv num ${g>=0?'pos':'neg'}">${g>=0?'+':''}${won(g/1e4)} (${g>=0?'+':''}${(g/pr*100).toFixed(2)}%)</span><span class="dv note">원금 ${won(pr/1e4)}</span>${p.principal?.since?`<span class="dv note">${annTxt(annRet(v,pr,p.principal.since))}</span>`:''}`:`<span class="dv note">원금 미입력${p.principal?.since?` · ${esc(p.principal.since)}부터`:''}</span>`}</span></div>`
+      + (open? `<div class="acct-items"><div class="lg-ed" data-prin="${esc(id)}"><label>원금 (원, 오늘 기준)<input type="number" inputmode="numeric" step="1" min="0" data-k="amt" value="${pr!=null?Math.round(pr):''}"></label><label>투자 시작 달<input type="month" data-k="since" value="${esc(p.principal?.since||'')}"></label><button class="btn sm" type="button" data-prin-save style="grid-column:1/-1">원금 저장</button></div>${p.principal?`<p class="note">입력일 ${esc(p.principal.asOf||'')}. 이후 '저축'·'일회성' 입금, 출금, 계좌 간 이동은 원금에 자동으로 더하거나 뺍니다. 연평균은 시작 달부터 입금이 고르게 들어왔다고 보고 추정한 값입니다.</p>`:''}</div>` : '');
   }).join('');
 }
 // 기간 시작일(한국 시간): 이번 주 = 월요일, 이번 달 = 1일
@@ -1972,9 +1979,9 @@ try{ const v=localStorage.getItem('ap'); if(['day','week','month','all'].include
 document.querySelectorAll('[data-ap]').forEach(b=>{ b.setAttribute('aria-pressed',b.dataset.ap===AP); b.addEventListener('click',()=>{ AP=b.dataset.ap; document.querySelectorAll('[data-ap]').forEach(x=>x.setAttribute('aria-pressed',x===b)); try{localStorage.setItem('ap',AP)}catch{} renderAsset() }) });
 $('acctList').addEventListener('click',async e=>{
   const sv=e.target.closest('[data-prin-save]');
-  if(sv){ const box=sv.closest('[data-prin]'), id=box.dataset.prin, amt=Math.round(n(box.querySelector('[data-k="amt"]').value));
+  if(sv){ const box=sv.closest('[data-prin]'), id=box.dataset.prin, amt=Math.round(n(box.querySelector('[data-k="amt"]').value)), since=box.querySelector('[data-k="since"]').value;
     if(!(amt>0)) return msg($('asMsg'),'원금을 입력하세요.',true);
-    try{ sv.disabled=true; sv.textContent='저장 중…'; await DB.doc('portfolios/'+id).set({...PF[id],principal:{amount:amt,asOf:todayStr()},updatedAt:new Date().toISOString()}); msg($('asMsg'),`${PF[id]?.name||id} 원금을 ${wonF(amt)}으로 저장했습니다.`) }
+    try{ sv.disabled=true; sv.textContent='저장 중…'; await DB.doc('portfolios/'+id).set({...PF[id],principal:{amount:amt,asOf:todayStr(),...(since?{since}:{})},updatedAt:new Date().toISOString()}); msg($('asMsg'),`${PF[id]?.name||id} 원금을 ${wonF(amt)}으로 저장했습니다.`) }
     catch(err){ msg($('asMsg'),saveErr(err),true) } finally{ renderAsset() }
     return }
   if(e.target.closest('[data-prin]')) return;
