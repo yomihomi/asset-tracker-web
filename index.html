@@ -337,7 +337,7 @@ input:disabled{opacity:.75}
       <h2>시장 경고 신호</h2>
       <span class="chip warn" id="sigChip">불러오는 중</span>
       <div class="sig" id="sigList"></div>
-      <h2 style="margin-top:4px">실물 · 금리</h2>
+      <h2 style="margin-top:4px">실물 · 금리 · 물가</h2>
       <div class="sig" id="sigMacro"></div>
       <p class="note" id="sigPhase"></p>
       <details class="more"><summary>신용매수 · 빅테크 투자 입력</summary>
@@ -352,7 +352,7 @@ input:disabled{opacity:.75}
         </div>
       </details>
       <p class="toast" id="sigMsg"></p>
-      <p class="note">AI 투자 사이클이 꺾이는지 보는 신호입니다. 셋 다 켜지면 주가와 금리가 함께 내려가는 국면으로 넘어가는 신호로 봅니다. BBB 스프레드는 평일 자동(FRED), 신용매수는 FINRA 발표(매월 중순), 빅테크 투자는 실적 발표(1·4·7·10월 말) 때 입력하세요. 실물·금리 두 지표는 FRED에서 자동으로 받습니다(순자산/가처분소득은 분기마다 갱신).</p>
+      <p class="note">AI 투자 사이클이 꺾이는지 보는 신호입니다. 셋 다 켜지면 주가와 금리가 함께 내려가는 국면으로 넘어가는 신호로 봅니다. BBB 스프레드는 평일 자동(FRED), 신용매수는 FINRA 발표(매월 중순), 빅테크 투자는 실적 발표(1·4·7·10월 말) 때 입력하세요. 실물·금리·물가 지표는 FRED에서 자동으로 받습니다(순자산/가처분소득은 분기마다 갱신). 모두 기록용이며 매매 규칙과 연결하지 않습니다.</p>
     </div>
 
     <div class="card" id="semiCard">
@@ -1859,6 +1859,16 @@ function macroEval(){
   if(c){ const d1=p? c.r-p.r : 0, d2=p&&p2? p.r-p2.r : 0, lv= d1<0&&d2<0?'bad': d1<0?'warn':'good';
     out.push({nm:'가계 순자산 ÷ 가처분소득',sub:`${c.q}${w.stale?' · 조회 실패, 직전 값':''} · 전분기 ${p?sg(d1):'–'} · ${c.r>=w.max?'사상 최고':`최고 ${w.max.toFixed(2)}배`} · 닷컴 고점 ${w.dotcom.toFixed(1)}배 · 주택버블 고점 ${w.housing.toFixed(1)}배 · ${d1<0?(d2<0?'2분기 연속 하락: 자산효과 꺾임':'하락 전환: 소비 위축 시작 신호'):'상승·유지: 자산효과 작동'}`,v:`${c.r.toFixed(2)}배`,lv}) }
   else out.push({nm:'가계 순자산 ÷ 가처분소득',sub:'다음 자동 조회(평일 20:10) 후 표시됩니다.',v:'–',lv:''});
+  // 하이일드 스프레드: AI 약한 고리(차입 의존 기업)가 먼저 반응. BBB보다 빠른 신호
+  const h=PRICES?.signals?.hy, rng=x=>`1년 ${x.lo.toFixed(2)}~${x.hi.toFixed(2)}%`;
+  if(h){ const lv= h.cur>=5?'bad': (h.cur>=4||h.chg20>=0.5)?'warn':'good';
+    out.push({nm:'하이일드 스프레드',sub:`${md(h.date)} 기준${h.stale?' · 조회 실패, 직전 값':''} · 20일 ${sg(h.chg20)}%p · ${rng(h)} · 약한 고리(차입 의존 기업) 신용. 4% 이상 주의, 5% 이상 경고`,v:h.cur.toFixed(2)+'%',lv}) }
+  else out.push({nm:'하이일드 스프레드',sub:'다음 자동 조회(평일 20:10) 후 표시됩니다.',v:'–',lv:''});
+  // 10년 기대 인플레이션: 높게 유지되면 성장 둔화에도 금리가 충분히 못 내려감(인플레이션 고착)
+  const e=PRICES?.signals?.bei;
+  if(e){ const lv= e.cur>=2.8?'bad': e.cur>=2.5?'warn':'good', stuck= e.cur>=2.5&&s&&s.chg20>0&&Math.abs(s.d2)>=Math.abs(s.d10)&&s.d2<0;
+    out.push({nm:'10년 기대 인플레이션',sub:`${md(e.date)} 기준${e.stale?' · 조회 실패, 직전 값':''} · 20일 ${sg(e.chg20)}%p · ${rng(e)} · 2.5% 이상이면 금리 하락이 제한됨(고착 위험), 2.8% 이상 경고${stuck?' · 단기 금리는 내리는데 기대 인플레이션은 높음: 고착 국면 주의':''}`,v:e.cur.toFixed(2)+'%',lv}) }
+  else out.push({nm:'10년 기대 인플레이션',sub:'다음 자동 조회(평일 20:10) 후 표시됩니다.',v:'–',lv:''});
   return out;
 }
 // 국면: AI 사이클(위 세 지표 경고 2개 이상 = 균열) × 자산효과(순자산 비율 하락 = 꺾임)
