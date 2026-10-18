@@ -337,6 +337,9 @@ input:disabled{opacity:.75}
       <h2>시장 경고 신호</h2>
       <span class="chip warn" id="sigChip">불러오는 중</span>
       <div class="sig" id="sigList"></div>
+      <h2 style="margin-top:4px">실물 · 금리</h2>
+      <div class="sig" id="sigMacro"></div>
+      <p class="note" id="sigPhase"></p>
       <details class="more"><summary>신용매수 · 빅테크 투자 입력</summary>
         <div class="lg-ed" style="padding-top:8px">
           <label>신용매수 기준 월<input type="month" id="sg-m"></label>
@@ -349,7 +352,7 @@ input:disabled{opacity:.75}
         </div>
       </details>
       <p class="toast" id="sigMsg"></p>
-      <p class="note">AI 투자 사이클이 꺾이는지 보는 신호입니다. 셋 다 켜지면 주가와 금리가 함께 내려가는 국면으로 넘어가는 신호로 봅니다. BBB 스프레드는 평일 자동(FRED), 신용매수는 FINRA 발표(매월 중순), 빅테크 투자는 실적 발표(1·4·7·10월 말) 때 입력하세요.</p>
+      <p class="note">AI 투자 사이클이 꺾이는지 보는 신호입니다. 셋 다 켜지면 주가와 금리가 함께 내려가는 국면으로 넘어가는 신호로 봅니다. BBB 스프레드는 평일 자동(FRED), 신용매수는 FINRA 발표(매월 중순), 빅테크 투자는 실적 발표(1·4·7·10월 말) 때 입력하세요. 실물·금리 두 지표는 FRED에서 자동으로 받습니다(순자산/가처분소득은 분기마다 갱신).</p>
     </div>
 
     <div class="card" id="semiCard">
@@ -1844,13 +1847,33 @@ function sigEval(){
   else out.push({nm:'빅테크 투자 전망',sub:'아래에서 입력하세요.',v:'–',lv:''});
   return out;
 }
+// 실물·금리: 장단기 금리차(10년−2년), 가계 순자산/가처분소득
+function macroEval(){
+  const out=[], s=PRICES?.signals?.spread, w=PRICES?.signals?.nw, sg=v=>`${v>=0?'+':''}${v.toFixed(2)}`;
+  if(s){ const lv= s.cur<0?'bad': s.cur<=0.1?'warn':'good';
+    const by= Math.abs(s.d2)>=Math.abs(s.d10)? '2년물' : '10년물';
+    const why= Math.abs(s.chg20)<0.05? '큰 변화 없음' : s.chg20>0? (by==='2년물'? '단기 금리 하락 주도 → 인하·침체 기대' : '장기 금리 상승 주도 → 성장·물가 기대') : (by==='2년물'? '단기 금리 상승 주도 → 추가 인상 기대' : '장기 금리 하락 주도 → 성장 둔화 기대');
+    out.push({nm:'장단기 금리차 (10년 − 2년)',sub:`${md(s.date)} 기준${s.stale?' · 조회 실패, 직전 값':''} · 10년 ${s.y10.toFixed(2)}% · 2년 ${s.y2.toFixed(2)}% · 20일 ${sg(s.chg20)}%p (10년 ${sg(s.d10)}, 2년 ${sg(s.d2)}) · ${why} · 1년 ${s.lo.toFixed(2)}~${s.hi.toFixed(2)}%p`,v:`${sg(s.cur)}%p`,lv}) }
+  else out.push({nm:'장단기 금리차 (10년 − 2년)',sub:'다음 자동 조회(평일 20:10) 후 표시됩니다.',v:'–',lv:''});
+  const R=w?.rows||[], c=R.at(-1), p=R.at(-2), p2=R.at(-3);
+  if(c){ const d1=p? c.r-p.r : 0, d2=p&&p2? p.r-p2.r : 0, lv= d1<0&&d2<0?'bad': d1<0?'warn':'good';
+    out.push({nm:'가계 순자산 ÷ 가처분소득',sub:`${c.q}${w.stale?' · 조회 실패, 직전 값':''} · 전분기 ${p?sg(d1):'–'} · ${c.r>=w.max?'사상 최고':`최고 ${w.max.toFixed(2)}배`} · 닷컴 고점 ${w.dotcom.toFixed(1)}배 · 주택버블 고점 ${w.housing.toFixed(1)}배 · ${d1<0?(d2<0?'2분기 연속 하락: 자산효과 꺾임':'하락 전환: 소비 위축 시작 신호'):'상승·유지: 자산효과 작동'}`,v:`${c.r.toFixed(2)}배`,lv}) }
+  else out.push({nm:'가계 순자산 ÷ 가처분소득',sub:'다음 자동 조회(평일 20:10) 후 표시됩니다.',v:'–',lv:''});
+  return out;
+}
+// 국면: AI 사이클(위 세 지표 경고 2개 이상 = 균열) × 자산효과(순자산 비율 하락 = 꺾임)
+const PHASE={'00':'AI 정상 + 자산효과 유지 → 지금 국면 유지','10':'AI 균열 + 자산효과 유지 → 초기 경고, 관찰 강화','11':'AI 균열 + 자산효과 꺾임 → 리포트가 말한 전환점 (주가·금리 동반 하락 국면)','01':'AI 정상 + 자산효과 꺾임 → 드문 조합, 다른 요인 확인'};
 function renderSig(){
+  const M=macroEval();
+  $('sigMacro').innerHTML=M.map(x=>`<div><span class="nm">${x.nm}<span class="note">${x.sub}</span></span><span class="v ${x.lv}">${x.v}</span></div>`).join('');
   const L=sigEval(), bad=L.filter(x=>x.lv==='bad').length, warn=L.filter(x=>x.lv==='warn').length;
   $('sigList').innerHTML=L.map(x=>`<div><span class="nm">${x.nm}<span class="note">${x.sub}</span></span><span class="v ${x.lv}">${x.v}</span></div>`).join('');
   const chip=$('sigChip');
   chip.className='chip '+(bad>=2?'bad':bad||warn?'warn':'good');
   chip.textContent= bad===3?'3개 모두 켜짐 · 함께 하락 국면 신호': bad? `경고 ${bad}개${warn?` · 주의 ${warn}개`:''}`: warn? `주의 ${warn}개`:'조용함 · 사이클 진행 중';
-  const hb=$('sigHome'); hb.hidden=bad<2; if(bad>=2) hb.textContent=`시장 경고 신호 ${bad}개가 켜졌습니다 (${L.filter(x=>x.lv==='bad').map(x=>x.nm).join(', ')}). 시장 탭에서 확인하세요.`;
+  const ai= bad>=2?1:0, we= M[1].lv&&M[1].lv!=='good'?1:0;
+  $('sigPhase').textContent= M[1].lv? `국면: ${PHASE[`${ai}${we}`]}` : '';
+  const hb=$('sigHome'); hb.hidden=bad<2; if(bad>=2) hb.textContent=`${ai&&we?'전환점 국면 (AI 균열 + 자산효과 꺾임). ':''}시장 경고 신호 ${bad}개가 켜졌습니다 (${L.filter(x=>x.lv==='bad').map(x=>x.nm).join(', ')}). 시장 탭에서 확인하세요.`;
   const sg=SIG||SIG_SEED; if(!$('sg-q').value&&sg.capex){ $('sg-q').value=sg.capex.q||''; $('sg-dir').value=sg.capex.dir||'up'; $('sg-note').value=sg.capex.note||'' }
 }
 async function putSig(next,ok){
