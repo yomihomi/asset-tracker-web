@@ -2064,25 +2064,37 @@ document.addEventListener('visibilitychange',()=>{ if(!document.hidden) autoRelo
 $('asReload').addEventListener('click',async()=>{
   try{ await loadAll(); emit('*'); renderAsset(); msg($('asMsg'),'최신 데이터를 불러왔습니다.') }catch(e){ msg($('asMsg'),ghErrText(e),true) }
 });
+let REF_STOP=null;  // 가격 갱신 기다리는 중이면 멈추는 함수
 $('asRefresh').addEventListener('click',async()=>{
-  const btn=$('asRefresh'); if(btn.disabled) return;
-  let tick=null;
+  const btn=$('asRefresh'); if(REF_STOP){ REF_STOP(); return } if(btn.disabled) return;  // 진행 중에 누르면 취소
+  let tick=null, stop=false, runId=null;
+  const done=(text,err)=>{ clearInterval(tick); REF_STOP=null; btn.textContent='지금 가격 갱신'; if(text) msg($('asMsg'),text,err) };
   try{
-    await ensureWrite(); btn.disabled=true;
+    btn.disabled=true; await ensureWrite();
+    const t0=Date.now(), since=new Date(t0-15e3).toISOString(), sleep=ms=>new Promise(r=>setTimeout(r,ms));
     await gh('actions/workflows/daily.yml/dispatches',{method:'POST',tok:GH.writeTok,body:JSON.stringify({ref:GH.branch,inputs:{force:false}})});
-    const before=PRICES_SHA, t0=Date.now(), sleep=ms=>new Promise(r=>setTimeout(r,ms));
-    const show=()=>msg($('asMsg'),`가격을 조회하는 중… ${Math.round((Date.now()-t0)/1000)}초 (보통 20~30초)`);
+    const before=PRICES_SHA;
+    REF_STOP=()=>{ stop=true; if(runId) gh(`actions/runs/${runId}/cancel`,{method:'POST',tok:GH.writeTok}).catch(()=>{}); done('가격 갱신을 취소했습니다.') };
+    btn.textContent='취소'; btn.disabled=false;
+    const show=()=>msg($('asMsg'),`가격을 조회하는 중… ${Math.round((Date.now()-t0)/1000)}초 (보통 20~30초, 버튼을 누르면 취소)`);
     show(); tick=setInterval(show,1000);
-    // Action이 뜨는 데 10초쯤 걸리므로 그 뒤부터 3초마다 파일이 바뀌었는지 확인 (sha만 보고, 바뀌면 그때 내려받아 복호화)
+    // Action이 뜨는 데 10초쯤 걸리므로 그 뒤부터 3초마다: 가격 파일이 바뀌었는지, 실행이 실패·취소로 끝났는지 확인
     await sleep(10000);
-    while(Date.now()-t0<180000){
+    while(!stop && Date.now()-t0<120000){
       const j=await gh(`contents/data/prices.enc.json?ref=${encodeURIComponent(GH.branch)}&t=${Date.now()}`).catch(()=>null);
-      if(j&&j.sha!==before){ clearInterval(tick); await loadAll(); emit('*'); renderAsset(); return msg($('asMsg'),`새 가격으로 갱신했습니다. (${Math.round((Date.now()-t0)/1000)}초)`) }
+      if(stop) return;
+      if(j&&j.sha!==before){ done(); await loadAll(); emit('*'); renderAsset(); return msg($('asMsg'),`새 가격으로 갱신했습니다. (${Math.round((Date.now()-t0)/1000)}초)`) }
+      const rs=await gh(`actions/workflows/daily.yml/runs?event=workflow_dispatch&created=${encodeURIComponent(">="+since)}&per_page=1`,{tok:GH.writeTok}).catch(()=>null);
+      if(stop) return; const run=rs?.workflow_runs?.[0];
+      if(run){ runId=run.id;
+        if(run.status==='completed'&&run.conclusion!=='success') return done(`가격 조회가 실패했습니다(${run.conclusion}). GitHub 쪽 일시 오류일 수 있으니 잠시 후 다시 누르세요.`,true);
+        if(run.status==='completed'){ await sleep(3000); const k=await gh(`contents/data/prices.enc.json?ref=${encodeURIComponent(GH.branch)}&t=${Date.now()}`).catch(()=>null);
+          if(k&&k.sha!==before){ done(); await loadAll(); emit('*'); renderAsset(); return msg($('asMsg'),`새 가격으로 갱신했습니다. (${Math.round((Date.now()-t0)/1000)}초)`) }
+          return done('조회는 끝났지만 바뀐 가격이 없습니다.') } }
       await sleep(3000);
     }
-    clearInterval(tick); msg($('asMsg'),'아직 끝나지 않았습니다. 잠시 후 다시 불러오기를 누르세요.');
-  }catch(e){ clearInterval(tick); msg($('asMsg'), e.code==='no_write'?'이 기기에는 쓰기 토큰이 없어 요청할 수 없습니다.':ghErrText(e),true) }
-  finally{ btn.disabled=false }
+    if(!stop) done('2분이 지나도 끝나지 않았습니다. GitHub가 늦게 실행하는 중일 수 있으니 잠시 후 다시 불러오기를 누르세요.');
+  }catch(e){ btn.disabled=false; done(e.code==='no_write'?'이 기기에는 쓰기 토큰이 없어 요청할 수 없습니다.':ghErrText(e),true) }
 });
 $('fillFromAcct').addEventListener('click',()=>{
   const m=$('f-month').value, a=autoRecord(m);
