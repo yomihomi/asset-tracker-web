@@ -1179,8 +1179,8 @@ let caDiff=0;
 function showCashAsk(diff){
   caDiff=diff; $('cashAsk').hidden=false;
   $('caText').textContent=`예수금이 ${diff>0?'+':'−'}${wonF(Math.abs(diff))} 바뀌었습니다. 어떤 돈인가요?`;
-  const opts= diff>0? [['new','새로 들어온 돈'],['once','일회성 입금'],['div','배당금·이자'],['xfer','다른 계좌에서 옮긴 돈'],['adj','수수료·오차 정리']]
-                    : [['out','출금 (생활비 등)'],['xfer','다른 계좌로 옮긴 돈'],['adj','수수료·오차 정리']];
+  const opts= diff>0? [['new','새로 들어온 돈'],['once','일회성 입금'],['div','배당금·이자'],['xfer','다른 계좌에서 옮긴 돈'],['adj','수수료·오차 정리'],['none','매도 대금 등 (입출금 아님)']]
+                    : [['out','출금 (생활비 등)'],['xfer','다른 계좌로 옮긴 돈'],['adj','수수료·오차 정리'],['none','매수 대금 등 (입출금 아님)']];
   $('caBtns').innerHTML=opts.map(([v,t])=>`<button class="btn ghost" type="button" data-ca="${v}">${t}</button>`).join('');
   $('caAcct').innerHTML=`<option value="">${diff>0?'보낸':'받은'} 계좌 선택</option>`+pfList().filter(([id])=>id!==cur).map(([id,p])=>`<option value="${esc(id)}">${esc(p.name||id)}</option>`).join('');
   $('caAcct').hidden=true; $('cashAsk').scrollIntoView({block:'center',behavior:'smooth'});
@@ -1188,6 +1188,8 @@ function showCashAsk(diff){
 $('caCancel').addEventListener('click',()=>{ $('cashAsk').hidden=true });
 $('caBtns').addEventListener('click',async e=>{
   const b=e.target.closest('[data-ca]'); if(!b||!draft) return; const ca=b.dataset.ca, diff=caDiff, d=todayStr();
+  // 앱 밖에서 사고판 대금처럼 입출금이 아닌 돈: 입금 기록 없이 저장 → 평가손익에 그대로 반영
+  if(ca==='none'){ $('cashAsk').hidden=true; const doc={...draft,updatedAt:new Date().toISOString()}; if(await rbWrite(doc,'예수금을 입출금 기록 없이 저장했습니다(손익에 반영).')) draft=doc; return }
   if(ca==='xfer'&&!$('caAcct').value){ $('caAcct').hidden=false; return msg($('rbMsg'),`${diff>0?'보낸':'받은'} 계좌를 고른 뒤 다시 누르세요.`,true) }
   const other=$('caAcct').value, entry={date:d,amount:diff,type:ca==='out'?'new':ca,cat:catOf(cur)};
   if(ca==='xfer'){ if(diff>0) entry.from=other; else entry.to=other }
