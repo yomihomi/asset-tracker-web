@@ -181,6 +181,9 @@ input:disabled{opacity:.75}
 .acct.clickable{cursor:pointer} .acct .nm .car{color:var(--muted);font-weight:400;font-size:12px;margin-left:4px}
 .acct-items{padding:2px 0 10px 10px;border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:4px;font-size:13px}
 .acct-items > div{display:flex;justify-content:space-between;gap:8px} .acct-items .r{text-align:right;white-space:nowrap}
+.acct-items.hold{gap:6px;padding-top:8px}
+.acct-items.hold > div{align-items:baseline} .hold > .lg-ed{display:grid} .hold > .hold-it{display:flex;flex-direction:column;gap:4px;border-top:1px dashed var(--line);padding-top:6px}
+.hold .lg-ed{grid-template-columns:repeat(auto-fit,minmax(110px,1fr))} .hold .lg-ed label{font-size:12.5px} .hold select{padding:7px 8px;font-size:14px}
 .pos{color:var(--good)} .neg{color:var(--bad)}
 .satbar{position:relative;height:10px;background:var(--bg);border:1px solid var(--line);border-radius:99px;overflow:visible}
 .satbar i{display:block;height:100%;border-radius:99px;background:var(--accent)}
@@ -1235,9 +1238,10 @@ function buildApply(idxs){
   const next=clone(draft), trades=[], over=[]; let buy=0,sell=0;
   idxs.forEach(i=>{ const x=next.items[i], o=ORD[i]; if(!x||!o||o.side==='none'||!(n(o.q)>0)) return;
     const q=n(o.q), pr=n(o.p);
-    if(o.side==='buy'){ x.qty=n(x.qty)+q; buy+=q*pr } else { if(q>n(x.qty)) over.push(x.name); x.qty=n(x.qty)-q; sell+=q*pr }
+    const c0=x.cost;  // 매입가(평균단가): 매수하면 가중 평균으로 갱신, 되돌릴 때 c0로 복원
+    if(o.side==='buy'){ if(n(x.cost)>0&&pr>0) x.cost=(n(x.qty)*n(x.cost)+q*pr)/(n(x.qty)+q); x.qty=n(x.qty)+q; buy+=q*pr } else { if(q>n(x.qty)) over.push(x.name); x.qty=n(x.qty)-q; sell+=q*pr }
     if(pr>0&&x.src!=='usdm') x.price=pr;
-    trades.push({name:x.name,code:x.code||'',side:o.side,q,p:pr});
+    trades.push({name:x.name,code:x.code||'',side:o.side,q,p:pr,...(c0!=null&&c0!==x.cost?{c0}:{})});
   });
   const cashAfter=Math.round(n(next.cash)-buy+sell);
   const err= over.length? `보유 수량보다 많이 팔 수 없습니다: ${over.join(', ')}`
@@ -1960,7 +1964,7 @@ function renderAsset(){
     const v=live[id], pv=base?.accounts?.[id], f= base? acctFlow(p,base.date) : 0, g= pv!=null? v-pv-f : null, den=n(pv)+Math.max(0,f);
     const open=AP_OPEN.has(id);
     return `<div class="acct clickable" data-acct="${esc(id)}" role="button" tabindex="0" aria-expanded="${open}"><span class="nm">${esc(p.name||id)}<span class="car">${open?'▾':'▸'}</span>${p.track===false?' <span class="note">· 추이 제외</span>':''}</span><span class="vv"><span class="num">${won(v/1e4)}</span>${g!=null?`<span class="dv num ${g>=0?'pos':'neg'}">${g>=0?'+':''}${won(g/1e4)}${pc(g,den)}</span>`:''}${f&&g!=null?`<span class="dv note">입출금 ${f>=0?'+':''}${won(f/1e4)} 제외</span>`:''}${now&&p.track!==false?`<span class="dv note">비중 ${(v/now*100).toFixed(1)}%</span>`:''}</span></div>`
-      + (open? acctItemsHTML(p,base,g) : '');
+      + (open? acctItemsHTML(p,base,g)+acctHoldHTML(id,p) : '');
   }).join('');
 }
 // 전체 기간: 원금 대비 평가금액. 원금 = 입력값 + 입력일 뒤 저축·일회성 입금·출금·계좌 간 이동 (배당·이자·보정은 제외)
@@ -1990,7 +1994,7 @@ function renderAcctAll(ports,live,now){
   $('acctList').innerHTML=ports.map(([id,p])=>{
     const v=live[id], pr=principalNow(p), g= pr!=null? v-pr : null, open=AP_OPEN.has(id);
     return `<div class="acct clickable" data-acct="${esc(id)}" role="button" tabindex="0" aria-expanded="${open}"><span class="nm">${esc(p.name||id)}<span class="car">${open?'▾':'▸'}</span></span><span class="vv"><span class="num">${won(v/1e4)}</span>${g!=null?`<span class="dv num ${g>=0?'pos':'neg'}">${g>=0?'+':''}${won(g/1e4)} (${g>=0?'+':''}${(g/pr*100).toFixed(2)}%)</span><span class="dv note">원금 ${won(pr/1e4)}</span>${p.principal?.flows||p.principal?.since?`<span class="dv note">${annTxt(annFlows(p,v)||annRet(v,pr,p.principal.since))}</span>`:''}`:`<span class="dv note">원금 미입력${p.principal?.since?` · ${esc(p.principal.since)}부터`:''}</span>`}</span></div>`
-      + (open? `<div class="acct-items"><div class="lg-ed" data-prin="${esc(id)}"><label>원금 (원, 오늘 기준)<input type="number" inputmode="numeric" step="1" min="0" data-k="amt" value="${pr!=null?Math.round(pr):''}"></label><label>투자 시작 달<input type="month" data-k="since" value="${esc(p.principal?.since||'')}"></label><button class="btn sm" type="button" data-prin-save style="grid-column:1/-1">원금 저장</button></div>${p.principal?`<p class="note">입력일 ${esc(p.principal.asOf||'')}. 이후 '저축'·'일회성' 입금, 출금, 계좌 간 이동은 원금에 자동으로 더하거나 뺍니다. ${p.principal.flows?'연평균은 저장된 입금 날짜·금액 기준(XIRR)입니다.':'연평균은 시작 달부터 입금이 고르게 들어왔다고 보고 추정한 값입니다.'}</p>`:''}</div>` : '');
+      + (open? `<div class="acct-items"><div class="lg-ed" data-prin="${esc(id)}"><label>원금 (원, 오늘 기준)<input type="number" inputmode="numeric" step="1" min="0" data-k="amt" value="${pr!=null?Math.round(pr):''}"></label><label>투자 시작 달<input type="month" data-k="since" value="${esc(p.principal?.since||'')}"></label><button class="btn sm" type="button" data-prin-save style="grid-column:1/-1">원금 저장</button></div>${p.principal?`<p class="note">입력일 ${esc(p.principal.asOf||'')}. 이후 '저축'·'일회성' 입금, 출금, 계좌 간 이동은 원금에 자동으로 더하거나 뺍니다. ${p.principal.flows?'연평균은 저장된 입금 날짜·금액 기준(XIRR)입니다.':'연평균은 시작 달부터 입금이 고르게 들어왔다고 보고 추정한 값입니다.'}</p>`:''}</div>`+acctHoldHTML(id,p) : '');
   }).join('');
 }
 // 기간 시작일(한국 시간): 이번 주 = 월요일, 이번 달 = 1일
@@ -2018,6 +2022,75 @@ function acctItemsHTML(p,base,acctGain){
   return `<div class="acct-items">${rows.map(r=>`<div><span>${esc(r.nm)} <span class="note">${won(r.v/1e4)}</span></span><span class="r">${fmt(r)}</span></div>`).join('')||'<p class="note">종목이 없습니다.</p>'}
     ${rest!=null&&Math.abs(rest)>=1e4?`<div><span class="note">예수금·기타 (환율·배당 등)</span><span class="r num note">${rest>=0?'+':''}${won(rest/1e4)}</span></div>`:''}</div>`;
 }
+// 보유 잔고 확인·맞추기: 예수금, 종목별 수량·매입가(평균단가). 매입가 단위는 그 종목 가격 단위(달러 직접 입력 종목은 USD)
+// 종류: amt = 직접 입력 현금성(RP 등, 금액으로 입력) / usd = 달러 직접 입력 / manual = 직접 입력 가격 / auto = 자동 가격
+const holdKind=x=> isCashItem(x)&&isManual(x)? 'amt' : x.src==='usdm'? 'usd' : isManual(x)? 'manual' : 'auto';
+const qtyF=v=>n(v).toLocaleString('ko-KR',{maximumFractionDigits:4});
+const ED={};  // 계좌별 편집 중 값
+function edInit(p){ return {cash:Math.round(n(p.cash)), cashUsd:n(p.cashUsd), type:'',
+  it:(p.items||[]).map(x=>({key:x.code||x.name, qty:n(x.qty), price:n(x.price), cost:n(x.cost)>0? n(x.cost) : '', amt:Math.round(n(x.qty)*n(x.price))}))} }
+// 편집값과 저장값의 차이: cash = 예수금·RP·달러 현금성 변화(원), qv = 그 밖 종목 수량 변화의 평가액(원)
+function holdDiff(p,e){ const fx=n(PRICES?.fx); let cash=n(e.cash)-n(p.cash)+(n(e.cashUsd)-n(p.cashUsd))*fx, qv=0;
+  (p.items||[]).forEach((x,i)=>{ const y=e.it[i]; if(!y) return; const k=holdKind(x);
+    if(k==='amt') cash+=n(y.amt)-n(x.qty)*n(x.price);
+    else if(k==='usd'&&isCashItem(x)) cash+=(n(y.qty)*n(y.price)-n(x.qty)*n(x.price))*fx;
+    else qv+=(n(y.qty)-n(x.qty))*epx(x) });
+  return {cash:Math.round(cash), qv:Math.round(qv)} }
+function holdDiffText(p,e){ const d=holdDiff(p,e), s=v=>`${v>=0?'+':'−'}${wonF(Math.abs(v))}`;
+  return [d.cash? `현금 ${s(d.cash)}` : '', d.qv? `종목 수량 ${s(d.qv)} (오차 정리로 기록)` : ''].filter(Boolean).join(' · ') || '바뀐 금액이 없습니다.' }
+function holdTypeOpts(p,e){ const c=holdDiff(p,e).cash;
+  const o= c>0? [['once','일회성 입금 (원금 O, 수익 X)'],['new','저축 (원금 O, 저축 속도 O)'],['div','배당·이자 (수익)'],['adj','오차 정리 (원금·수익 모두 X)']]
+         : c<0? [['out','출금 (원금에서 뺌)'],['adj','오차 정리 (원금·수익 모두 X)']] : [];
+  return o.length? `<option value="">현금 차이는 어떤 돈인가요?</option>`+o.map(([v,t])=>`<option value="${v}" ${e.type===v?'selected':''}>${t}</option>`).join('') : '' }
+function acctHoldHTML(id,p){
+  const e=ED[id], fx=n(PRICES?.fx), its=p.items||[];
+  if(e){
+    const inp=(i,f,v,lab,st)=>`<label>${lab}<input type="number" inputmode="decimal" step="${st||'any'}" data-i="${i}" data-f="${f}" value="${v}"></label>`;
+    return `<div class="acct-items hold" data-hold="${esc(id)}"><b>잔고 맞추기</b><div class="lg-ed">
+      ${inp('','cash',e.cash,'원화 예수금 (원)','1')}${n(p.cashUsd)||n(e.cashUsd)? inp('','cashUsd',e.cashUsd,'달러 예수금 (USD)') : ''}</div>
+      ${its.map((x,i)=>{ const y=e.it[i], k=holdKind(x), usd=k==='usd';
+        return `<div class="hold-it"><span class="hn">${esc(x.name||x.code)}${k==='auto'?` <span class="note">현재가 ${wonF(epx(x))}</span>`:''}</span><div class="lg-ed">${k==='amt'? `${inp(i,'amt',y.amt,'금액 (원)','1')}`
+          : `${inp(i,'qty',y.qty,'수량')}${usd&&isCashItem(x)? '' : inp(i,'cost',y.cost,`매입가 (${usd?'USD':'원'})`)}${k!=='auto'? inp(i,'price',y.price,`현재가 (${usd?'USD':'원'})`) : ''}`}</div></div>` }).join('')}
+      <p class="note" data-hdiff>${holdDiffText(p,e)}</p>
+      <select data-f="type" ${holdDiff(p,e).cash?'':'hidden'}>${holdTypeOpts(p,e)}</select>
+      <div class="lg-a"><button class="btn ghost sm" type="button" data-hold-cancel>취소</button><button class="btn sm" type="button" data-hold-save>저장</button></div>
+      <p class="note">증권사 앱의 잔고를 그대로 옮겨 적으세요. 예수금·RP 차이는 고른 종류로 입금 기록에 남고(기록 탭에서 금액·종류 수정 가능, 잔고는 그대로), 종목 수량 차이는 '오차 정리'로 남아 기간 손익에 잡히지 않습니다. 매입가는 손익 표시에만 쓰입니다.</p></div>`;
+  }
+  let tc=0, tv=0;
+  const rows=its.filter(x=>n(x.qty)).map(x=>{ const k=holdKind(x), v=n(x.qty)*epx(x);
+    if(k==='amt') return `<div><span>${esc(x.name)}</span><span class="r num">${wonF(v)}</span></div>`;
+    if(k==='usd'&&isCashItem(x)) return `<div><span>${esc(x.name)}</span><span class="r num">$${qtyF(n(x.qty)*n(x.price))} <span class="note">≈ ${wonF(v)}</span></span></div>`;
+    const usd=k==='usd', c=n(x.cost), cv=c*n(x.qty)*(usd?fx:1), g= c>0? v-cv : null; if(g!=null){ tc+=cv; tv+=v }
+    return `<div><span>${esc(x.name||x.code)} <span class="note">${qtyF(x.qty)}주 · ${c>0? `매입가 ${usd?'$'+qtyF(c):wonF(c)}` : '매입가 미입력'}</span></span><span class="r">${g!=null?`<span class="num ${g>=0?'pos':'neg'}">${g>=0?'+':''}${won(g/1e4)} (${g>=0?'+':''}${(g/cv*100).toFixed(2)}%)</span>`:''}</span></div>` });
+  return `<div class="acct-items hold"><div><b>보유 잔고</b><button class="btn ghost sm" type="button" data-hold-open="${esc(id)}">잔고 맞추기</button></div>
+    <div><span>원화 예수금</span><span class="r num">${wonF(n(p.cash))}</span></div>
+    ${n(p.cashUsd)? `<div><span>달러 예수금</span><span class="r num">$${qtyF(p.cashUsd)} <span class="note">≈ ${wonF(n(p.cashUsd)*fx)}</span></span></div>` : ''}
+    ${rows.join('')}
+    ${tc? `<div><span class="note">매입가 입력 종목 합계 (매입 ${won(tc/1e4)})</span><span class="r num ${tv>=tc?'pos':'neg'}">${tv>=tc?'+':''}${won((tv-tc)/1e4)} (${tv>=tc?'+':''}${((tv/tc-1)*100).toFixed(2)}%)</span></div>` : ''}</div>`;
+}
+async function holdSave(id){
+  const p=PF[id], e=ED[id]; if(!p||!e) return;
+  if(busyAcct(id)) return msg($('asMsg'),`리밸런싱 탭의 ${p.name||id} 계좌에 저장하지 않은 변경이 있습니다. 먼저 저장하거나 버리세요.`,true);
+  const its=p.items||[];
+  if(its.length!==e.it.length||its.some((x,i)=>(x.code||x.name)!==e.it[i].key)){ delete ED[id]; renderAsset(); return msg($('asMsg'),'그 사이 계좌의 종목 구성이 바뀌었습니다. 잔고 맞추기를 다시 여세요.',true) }
+  if(its.some((x,i)=>holdKind(x)!=='amt'&&n(e.it[i].qty)<0)) return msg($('asMsg'),'수량은 0 이상이어야 합니다.',true);
+  const d=holdDiff(p,e);
+  if(d.cash&&!e.type) return msg($('asMsg'),'현금 차이가 어떤 돈인지 고르세요.',true);
+  const doc=clone(p), date=todayStr(); doc.cash=Math.round(n(e.cash));
+  if(n(e.cashUsd)||p.cashUsd!=null) doc.cashUsd=n(e.cashUsd);
+  doc.items.forEach((x,i)=>{ const y=e.it[i], k=holdKind(x);
+    if(k==='amt'){ x.qty=n(x.qty)||1; x.price=n(y.amt)/x.qty; return }
+    x.qty=n(y.qty); if(k!=='auto') x.price=n(y.price);
+    if(n(y.cost)>0) x.cost=n(y.cost); else delete x.cost });
+  const add=[];  // 잔고를 직접 맞춘 것이라 기록만 남김(noCash)
+  if(d.cash) add.push({date,amount:d.cash,type:e.type==='out'?'new':e.type,cat:catOf(id),noCash:true,fix:'cash'});
+  if(d.qv) add.push({date,amount:d.qv,type:'adj',cat:catOf(id),noCash:true,fix:'qty'});
+  doc.deposits=[...(doc.deposits||[]),...add].slice(-500);
+  try{ await putPF(id,doc); delete ED[id];
+    msg($('asMsg'),`${p.name||id} 잔고를 맞췄습니다.${d.cash||d.qv?` (${holdDiffText(p,e)})`:''}`) }
+  catch(err){ msg($('asMsg'),saveErr(err),true) }
+  renderAsset();
+}
 let AP='day'; const AP_OPEN=new Set();
 try{ const v=localStorage.getItem('ap'); if(['day','week','month','all'].includes(v)) AP=v }catch{}
 document.querySelectorAll('[data-ap]').forEach(b=>{ b.setAttribute('aria-pressed',b.dataset.ap===AP); b.addEventListener('click',()=>{ AP=b.dataset.ap; document.querySelectorAll('[data-ap]').forEach(x=>x.setAttribute('aria-pressed',x===b)); try{localStorage.setItem('ap',AP)}catch{} renderAsset() }) });
@@ -2029,7 +2102,27 @@ $('acctList').addEventListener('click',async e=>{
     catch(err){ msg($('asMsg'),saveErr(err),true) } finally{ renderAsset() }
     return }
   if(e.target.closest('[data-prin]')) return;
+  const ho=e.target.closest('[data-hold-open]');
+  if(ho){ const id=ho.dataset.holdOpen; if(busyAcct(id)) return msg($('asMsg'),`리밸런싱 탭의 ${PF[id]?.name||id} 계좌에 저장하지 않은 변경이 있습니다. 먼저 저장하거나 버리세요.`,true);
+    ED[id]=edInit(PF[id]); return renderAsset() }
+  const hb=e.target.closest('[data-hold]');
+  if(hb){ const id=hb.dataset.hold;
+    if(e.target.closest('[data-hold-cancel]')){ delete ED[id]; renderAsset() }
+    else if(e.target.closest('[data-hold-save]')){ const b=e.target.closest('[data-hold-save]'); b.disabled=true; b.textContent='저장 중…'; await holdSave(id) }
+    return }
+  if(e.target.closest('.hold')) return;
   const r=e.target.closest('[data-acct]'); if(!r) return; const id=r.dataset.acct; AP_OPEN.has(id)?AP_OPEN.delete(id):AP_OPEN.add(id); renderAsset() });
+// 입력할 때마다 편집값만 바꾸고(다시 그리지 않음) 차이 안내·종류 선택을 갱신
+$('acctList').addEventListener('input',e=>{
+  const box=e.target.closest('[data-hold]'), f=e.target.dataset.f; if(!box||!f) return;
+  const id=box.dataset.hold, p=PF[id], ed=ED[id]; if(!p||!ed) return;
+  if(f==='type'){ ed.type=e.target.value; return }
+  const v=e.target.value===''? '' : n(e.target.value);
+  if(f==='cash'||f==='cashUsd') ed[f]=n(v); else ed.it[+e.target.dataset.i][f]=v;
+  box.querySelector('[data-hdiff]').textContent=holdDiffText(p,ed);
+  const sel=box.querySelector('select[data-f="type"]'), c=holdDiff(p,ed).cash, keep=ed.type;
+  sel.hidden=!c; sel.innerHTML=holdTypeOpts(p,ed); if(![...sel.options].some(o=>o.value===keep)) ed.type=''; sel.value=ed.type;
+});
 $('acctList').addEventListener('keydown',e=>{ if((e.key==='Enter'||e.key===' ')&&e.target.matches('[data-acct]')){ e.preventDefault(); e.target.click() } });
 document.querySelectorAll('[data-rg]').forEach(b=>b.addEventListener('click',()=>{RANGE=+b.dataset.rg; document.querySelectorAll('[data-rg]').forEach(x=>x.setAttribute('aria-pressed',x===b)); renderAsset()}));
 async function loadAll(){
@@ -2190,7 +2283,7 @@ $('tradeList').addEventListener('click',async e=>{
   if(busyAcct(acct)) return msg($('trMsg'),`리밸런싱 탭의 ${p.name||acct} 계좌에 저장하지 않은 변경이 있습니다. 먼저 저장하거나 버리세요.`,true);
   const a=clone(p), miss=[], neg=[];
   for(const x of t.items||[]){ const it=a.items.find(y=>(x.code&&y.code===x.code)||y.name===x.name); if(!it){miss.push(x.name);continue}
-    it.qty=n(it.qty)+(x.side==='buy'?-n(x.q):n(x.q)); if(it.qty<0) neg.push(it.name) }
+    it.qty=n(it.qty)+(x.side==='buy'?-n(x.q):n(x.q)); if(x.c0!=null) it.cost=x.c0; if(it.qty<0) neg.push(it.name) }
   if(miss.length) return msg($('trMsg'),`지금 계좌에 없는 종목이 있어 되돌릴 수 없습니다: ${miss.join(', ')}`,true);
   if(neg.length) return msg($('trMsg'),`되돌리면 보유 수량이 음수가 됩니다: ${neg.join(', ')}. 이후 매매를 먼저 되돌리세요.`,true);
   if(del.dataset.armed!=='1'){ del.dataset.armed='1'; del.textContent='한 번 더 누르면 되돌림'; return }
