@@ -2041,8 +2041,8 @@ function holdDiff(p,e){ const fx=n(PRICES?.fx); let cash=n(e.cash)-n(p.cash)+(n(
 function holdDiffText(p,e){ const d=holdDiff(p,e), s=v=>`${v>=0?'+':'−'}${wonF(Math.abs(v))}`;
   return [d.cash? `현금 ${s(d.cash)}` : '', d.qv? `종목 수량 ${s(d.qv)} (오차 정리로 기록)` : ''].filter(Boolean).join(' · ') || '바뀐 금액이 없습니다.' }
 function holdTypeOpts(p,e){ const c=holdDiff(p,e).cash;
-  const o= c>0? [['once','일회성 입금 (원금 O, 수익 X)'],['new','저축 (원금 O, 저축 속도 O)'],['div','배당·이자 (수익)'],['adj','오차 정리 (원금·수익 모두 X)']]
-         : c<0? [['out','출금 (원금에서 뺌)'],['adj','오차 정리 (원금·수익 모두 X)']] : [];
+  const o= c>0? [['once','일회성 입금 (원금 O, 수익 X)'],['new','저축 (원금 O, 저축 속도 O)'],['div','배당·이자 (수익)'],['adj','오차 정리 (원금·수익 모두 X)'],['none','매도 대금 등 앱 밖 매매 (입출금 아님, 손익에 반영)']]
+         : c<0? [['out','출금 (원금에서 뺌)'],['adj','오차 정리 (원금·수익 모두 X)'],['none','매수 대금 등 앱 밖 매매 (입출금 아님, 손익에 반영)']] : [];
   return o.length? `<option value="">현금 차이는 어떤 돈인가요?</option>`+o.map(([v,t])=>`<option value="${v}" ${e.type===v?'selected':''}>${t}</option>`).join('') : '' }
 function acctHoldHTML(id,p){
   const e=ED[id], fx=n(PRICES?.fx), its=p.items||[];
@@ -2085,7 +2085,7 @@ async function holdSave(id){
     x.qty=n(y.qty); if(k!=='auto') x.price=n(y.price);
     if(n(y.cost)>0) x.cost=n(y.cost); else delete x.cost });
   const add=[];  // 잔고를 직접 맞춘 것이라 기록만 남김(noCash)
-  if(d.cash) add.push({date,amount:d.cash,type:e.type==='out'?'new':e.type,cat:catOf(id),noCash:true,fix:'cash'});
+  if(d.cash&&e.type!=='none') add.push({date,amount:d.cash,type:e.type==='out'?'new':e.type,cat:catOf(id),noCash:true,fix:'cash'});
   if(d.qv) add.push({date,amount:d.qv,type:'adj',cat:catOf(id),noCash:true,fix:'qty'});
   doc.deposits=[...(doc.deposits||[]),...add].slice(-500);
   try{ await putPF(id,doc); delete ED[id];
