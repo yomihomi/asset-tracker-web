@@ -42,7 +42,7 @@ header.top .asof{color:var(--muted);font-size:13px}
 .chip{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:600;padding:3px 10px;border-radius:999px;width:fit-content}
 .chip.good{background:var(--accent-soft);color:var(--good)} .chip.warn{background:var(--warn-soft);color:var(--warn)} .chip.bad{background:var(--bad-soft);color:var(--bad)}
 .seg{display:flex;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:3px;gap:3px}
-.seg button{flex:1;border:0;background:transparent;color:var(--muted);font:inherit;font-size:14px;padding:7px 4px;border-radius:7px;cursor:pointer}
+.seg button{flex:1;white-space:nowrap;border:0;background:transparent;color:var(--muted);font:inherit;font-size:14px;padding:7px 4px;border-radius:7px;cursor:pointer}
 .seg button[aria-pressed="true"]{background:var(--surface);color:var(--ink);font-weight:600;box-shadow:0 1px 2px rgb(0 0 0 / .08)}
 .seg button:disabled{opacity:.4;cursor:not-allowed}
 .kv{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px}
@@ -421,10 +421,11 @@ input:disabled{opacity:.75}
     <div class="card">
       <h2>계좌별 현황</h2>
       <div class="seg" role="group" aria-label="평가손익 기간">
-        <button type="button" data-ap="day" aria-pressed="true">전일 대비</button>
+        <button type="button" data-ap="day" aria-pressed="true">전일</button>
         <button type="button" data-ap="week" aria-pressed="false">이번 주</button>
         <button type="button" data-ap="month" aria-pressed="false">이번 달</button>
-        <button type="button" data-ap="all" aria-pressed="false">전체 기간</button>
+        <button type="button" data-ap="all" aria-pressed="false">전체</button>
+        <button type="button" data-ap="adj" aria-pressed="false">조정</button>
       </div>
       <p class="note" id="apBase"></p>
       <div id="acctList"></div>
@@ -1959,6 +1960,7 @@ function renderAsset(){
   renderCls(); renderSat(); renderRbHome();
   // 기간별 평가손익: 기준 = 전일(직전 기록) / 이번 주(월요일 전 마지막 기록) / 이번 달(1일 전 마지막 기록)
   if(AP==='all') return renderAcctAll(ports,live,now);
+  if(AP==='adj') return renderAcctAdj(ports,live);
   const base= AP==='day'? prevRec : recs.filter(r=>r.date<apStart(AP)).at(-1);
   $('apBase').textContent= base? `기준: ${base.date} 일별 기록${base.src==='excel'?' (엑셀 주간 기록)':''} → 지금` : '비교할 기준 기록이 없습니다.';
   const pc=(g,b)=> b>0? ` (${g>=0?'+':''}${(g/b*100).toFixed(2)}%)` : '';
@@ -1966,7 +1968,7 @@ function renderAsset(){
     const v=live[id], pv=base?.accounts?.[id], f= base? acctFlow(p,base.date) : 0, g= pv!=null? v-pv-f : null, den=n(pv)+Math.max(0,f);
     const open=AP_OPEN.has(id);
     return `<div class="acct clickable" data-acct="${esc(id)}" role="button" tabindex="0" aria-expanded="${open}"><span class="nm">${esc(p.name||id)}<span class="car">${open?'▾':'▸'}</span>${p.track===false?' <span class="note">· 추이 제외</span>':''}</span><span class="vv"><span class="num">${won(v/1e4)}</span>${g!=null?`<span class="dv num ${g>=0?'pos':'neg'}">${g>=0?'+':''}${won(g/1e4)}${pc(g,den)}</span>`:''}${f&&g!=null?`<span class="dv note">입출금 ${f>=0?'+':''}${won(f/1e4)} 제외</span>`:''}${now&&p.track!==false?`<span class="dv note">비중 ${(v/now*100).toFixed(1)}%</span>`:''}</span></div>`
-      + (open? acctItemsHTML(p,base,g)+acctHoldHTML(id,p) : '');
+      + (open? acctItemsHTML(p,base,g) : '');
   }).join('');
 }
 // 전체 기간: 원금 대비 평가금액. 원금 = 입력값 + 입력일 뒤 저축·일회성 입금·출금·계좌 간 이동 (배당·이자·보정은 제외)
@@ -1996,7 +1998,15 @@ function renderAcctAll(ports,live,now){
   $('acctList').innerHTML=ports.map(([id,p])=>{
     const v=live[id], pr=principalNow(p), g= pr!=null? v-pr : null, open=AP_OPEN.has(id);
     return `<div class="acct clickable" data-acct="${esc(id)}" role="button" tabindex="0" aria-expanded="${open}"><span class="nm">${esc(p.name||id)}<span class="car">${open?'▾':'▸'}</span></span><span class="vv"><span class="num">${won(v/1e4)}</span>${g!=null?`<span class="dv num ${g>=0?'pos':'neg'}">${g>=0?'+':''}${won(g/1e4)} (${g>=0?'+':''}${(g/pr*100).toFixed(2)}%)</span><span class="dv note">원금 ${won(pr/1e4)}</span>${p.principal?.flows||p.principal?.since?`<span class="dv note">${annTxt(annFlows(p,v)||annRet(v,pr,p.principal.since))}</span>`:''}`:`<span class="dv note">원금 미입력${p.principal?.since?` · ${esc(p.principal.since)}부터`:''}</span>`}</span></div>`
-      + (open? `<div class="acct-items"><div class="lg-ed" data-prin="${esc(id)}"><label>원금 (원, 오늘 기준)<input type="number" inputmode="numeric" step="1" min="0" data-k="amt" value="${pr!=null?Math.round(pr):''}"></label><label>투자 시작 달<input type="month" data-k="since" value="${esc(p.principal?.since||'')}"></label><button class="btn sm" type="button" data-prin-save style="grid-column:1/-1">원금 저장</button></div>${p.principal?`<p class="note">입력일 ${esc(p.principal.asOf||'')}. 이후 '저축'·'일회성' 입금, 출금, 계좌 간 이동은 원금에 자동으로 더하거나 뺍니다. ${p.principal.flows?'연평균은 저장된 입금 날짜·금액 기준(XIRR)입니다.':'연평균은 시작 달부터 입금이 고르게 들어왔다고 보고 추정한 값입니다.'}</p>`:''}</div>`+acctHoldHTML(id,p) : '');
+      + (open? `<div class="acct-items"><div class="lg-ed" data-prin="${esc(id)}"><label>원금 (원, 오늘 기준)<input type="number" inputmode="numeric" step="1" min="0" data-k="amt" value="${pr!=null?Math.round(pr):''}"></label><label>투자 시작 달<input type="month" data-k="since" value="${esc(p.principal?.since||'')}"></label><button class="btn sm" type="button" data-prin-save style="grid-column:1/-1">원금 저장</button></div>${p.principal?`<p class="note">입력일 ${esc(p.principal.asOf||'')}. 이후 '저축'·'일회성' 입금, 출금, 계좌 간 이동은 원금에 자동으로 더하거나 뺍니다. ${p.principal.flows?'연평균은 저장된 입금 날짜·금액 기준(XIRR)입니다.':'연평균은 시작 달부터 입금이 고르게 들어왔다고 보고 추정한 값입니다.'}</p>`:''}</div>` : '');
+  }).join('');
+}
+// 조정: 증권사 잔고와 맞추기 (보유 잔고 확인 · 잔고 맞추기)
+function renderAcctAdj(ports,live){
+  $('apBase').textContent='계좌를 눌러 증권사 잔고(예수금·RP·종목 수량·매입가)와 비교하고 맞추세요.';
+  $('acctList').innerHTML=ports.map(([id,p])=>{ const open=AP_OPEN.has(id);
+    return `<div class="acct clickable" data-acct="${esc(id)}" role="button" tabindex="0" aria-expanded="${open}"><span class="nm">${esc(p.name||id)}<span class="car">${open?'▾':'▸'}</span></span><span class="vv"><span class="num">${won(live[id]/1e4)}</span></span></div>`
+      + (open? acctHoldHTML(id,p) : '');
   }).join('');
 }
 // 기간 시작일(한국 시간): 이번 주 = 월요일, 이번 달 = 1일
@@ -2094,7 +2104,7 @@ async function holdSave(id){
   renderAsset();
 }
 let AP='day'; const AP_OPEN=new Set();
-try{ const v=localStorage.getItem('ap'); if(['day','week','month','all'].includes(v)) AP=v }catch{}
+try{ const v=localStorage.getItem('ap'); if(['day','week','month','all','adj'].includes(v)) AP=v }catch{}
 document.querySelectorAll('[data-ap]').forEach(b=>{ b.setAttribute('aria-pressed',b.dataset.ap===AP); b.addEventListener('click',()=>{ AP=b.dataset.ap; document.querySelectorAll('[data-ap]').forEach(x=>x.setAttribute('aria-pressed',x===b)); try{localStorage.setItem('ap',AP)}catch{} renderAsset() }) });
 $('acctList').addEventListener('click',async e=>{
   const sv=e.target.closest('[data-prin-save]');
