@@ -155,6 +155,13 @@ label.chk input{width:auto;accent-color:var(--accent)}
 .sig .v.warn{color:var(--warn)} .sig .v.bad{color:var(--bad)} .sig .v.good{color:var(--good)}
 details.more{border-top:1px solid var(--line);padding-top:10px}
 details.more summary{cursor:pointer;font-size:13.5px;color:var(--muted)}
+.es{border-top:1px solid var(--line);padding:10px 0}
+.es>summary{cursor:pointer;list-style:none;display:flex;flex-direction:column;gap:2px}
+.es>summary b{font-size:14.5px}
+.es-body{font-size:14px;line-height:1.6;padding-top:6px;overflow-wrap:anywhere}
+.es-body h4{margin:12px 0 4px;font-size:14px}
+.es-body ul{margin:4px 0;padding-left:18px}
+.es-body p{margin:6px 0}
 .more-in{display:flex;flex-direction:column;gap:10px;padding-top:10px}
 ul.log{margin:8px 0 0;padding:0;list-style:none;display:flex;flex-direction:column;gap:6px;font-size:13.5px}
 ul.log li{display:flex;gap:10px} ul.log .d{font-family:var(--font-num);color:var(--muted);flex:none}
@@ -386,6 +393,13 @@ input:disabled{opacity:.75}
       </details>
       <p class="note" id="semiAt"></p>
       <p class="note">반도체 = 순수 반도체(집적회로 8542 + 개별소자 8541), 억 달러. 신호: 메모리 물량(무게)이 전월보다 줄면 '물량 둔화'(1차 조기경보), 금액까지 줄면 '금액 둔화'. HBM은 계약 물량이 남아 있는 동안 금액이 버티므로 물량이 먼저 꺾입니다. 물량 둔화가 2개월 이어지면 현황 탭에 알림이 뜹니다. 월별 확정치는 매월 15일경, 이달 잠정치는 11일·21일·다음 달 1일에 나오며 매일 10시에 확인합니다. HBM 값은 복합구조칩(MCP) 코드 전체라 HBM이 아닌 제품도 들어 있어, 과거 값은 참고용입니다.</p>
+    </div>
+
+    <div class="card" id="esCard">
+      <h2>시장 에세이</h2>
+      <details class="more" id="esFlowBox" hidden><summary>흐름 정리</summary><div class="es-body" id="esFlow"></div></details>
+      <div id="esList"><p class="note">시장 탭을 열면 불러옵니다.</p></div>
+      <p class="note">붙여 넣은 에세이·보고서를 날짜별로 모은 것입니다(비공개 저장소 notes/essays). 글을 누르면 요약·검토 메모·앱 지표 연결이 나오고, 원문은 맨 아래에서 펼칩니다.</p>
     </div>
 
   </section>
@@ -997,6 +1011,7 @@ $('setForm').addEventListener('submit',async e=>{
 document.querySelectorAll('nav.tabs button').forEach(b=>b.addEventListener('click',()=>{
   document.querySelectorAll('nav.tabs button').forEach(x=>x.removeAttribute('aria-current')); b.setAttribute('aria-current','page');
   ['home','market','asset','input','rebal','set'].forEach(t=>$('tab-'+t).hidden=t!==b.dataset.tab); window.scrollTo({top:0});
+  if(b.dataset.tab==='market') loadEssays();
   try{localStorage.setItem('tab',b.dataset.tab)}catch{}
 }));
 document.querySelectorAll('[data-sc]').forEach(b=>b.addEventListener('click',()=>{
@@ -1880,7 +1895,49 @@ function macroEval(){
 }
 // 국면: AI 사이클(위 세 지표 경고 2개 이상 = 균열) × 자산효과(순자산 비율 하락 = 꺾임)
 const PHASE={'00':'AI 정상 + 자산효과 유지 → 지금 국면 유지','10':'AI 균열 + 자산효과 유지 → 초기 경고, 관찰 강화','11':'AI 균열 + 자산효과 꺾임 → 리포트가 말한 전환점 (주가·금리 동반 하락 국면)','01':'AI 정상 + 자산효과 꺾임 → 드문 조합, 다른 요인 확인'};
+/* ---------- 시장 에세이 (비공개 저장소 notes/essays를 읽기 토큰으로 불러옴 — 공개 페이지에는 글이 들어가지 않음) ---------- */
+let ES=null, ES_LOADING=false;
+const ghPath=p=>p.split('/').map(encodeURIComponent).join('/');
+async function ghText(path){ const j=await gh(`contents/${ghPath(path)}?ref=${encodeURIComponent(GH.branch)}`); return td.decode(b64u8(j.content)) }
+function mdHTML(t){  // 에세이 파일에 쓰는 만큼만: 제목, 목록(2단계), 굵게, 문단. '## 원문'부터는 접어 둠
+  const inl=x=>esc(x).replace(/\*\*(.+?)\*\*/g,'<b>$1</b>').replace(/`([^`]+)`/g,'<code>$1</code>');
+  let out='', list=0, orig=false;
+  const close=()=>{ while(list>0){ out+='</ul>'; list-- } };
+  for(const raw of t.split('\n')){
+    const l=raw.replace(/\s+$/,''); if(/^# /.test(l)) continue;
+    let m;
+    if((m=l.match(/^## (.+)/))){ close(); if(m[1].trim()==='원문'){ out+='<details class="more"><summary>원문</summary>'; orig=true } else out+=`<h4>${inl(m[1])}</h4>`; continue }
+    if((m=l.match(/^(\s*)[-*] (.+)/))){ const lv=m[1].length>=2?2:1; while(list<lv){ out+='<ul>'; list++ } while(list>lv){ out+='</ul>'; list-- } out+=`<li>${inl(m[2])}</li>`; continue }
+    close(); if(l.trim()) out+=`<p>${inl(l)}</p>`;
+  }
+  close(); if(orig) out+='</details>'; return out }
+async function loadEssays(){
+  if(ES||ES_LOADING||!GH.readTok) return; ES_LOADING=true;
+  try{
+    const dir=await gh(`contents/notes/essays?ref=${encodeURIComponent(GH.branch)}`);
+    const files=dir.filter(f=>/^\d{4}-\d{2}-\d{2}-.+\.md$/.test(f.name)).sort((a,b)=>b.name.localeCompare(a.name));
+    const rows={}; let flow='';
+    if(dir.some(f=>f.name==='README.md')){ const t=await ghText('notes/essays/README.md');
+      for(const l of t.split('\n')){ const c=l.split('|').map(x=>x.trim()); if(/^\d{4}-\d{2}-\d{2}$/.test(c[1]||'')) (rows[c[1]] ||= []).push({title:c[2],core:c[3]}) }
+      const i=t.indexOf('## 흐름 정리'); if(i>=0) flow=t.slice(i).split('\n').slice(1).join('\n').split(/\n## /)[0] }
+    ES={files,rows,flow,body:{}}; renderEssays();
+  }catch(e){ $('esList').innerHTML=`<p class="note">에세이를 불러오지 못했습니다 (${esc(ghErrText(e))}).</p>` }
+  finally{ ES_LOADING=false }
+}
+function renderEssays(){
+  if(!ES) return;
+  if(ES.flow){ $('esFlowBox').hidden=false; $('esFlow').innerHTML=mdHTML(ES.flow) }
+  $('esList').innerHTML= ES.files.length? ES.files.map(f=>{ const d=f.name.slice(0,10), r=ES.rows[d]||[], one=r.length===1? r[0] : null;
+    const title= one?.title || f.name.slice(11,-3).replace(/-/g,' ');
+    return `<details class="es" data-es="${esc(f.path)}"><summary><span class="note num">${d}</span><b>${esc(title)}</b>${one?.core?`<span class="note">${esc(one.core)}</span>`:''}</summary><div class="es-body">${ES.body[f.path]||'불러오는 중…'}</div></details>` }).join('')
+    : '<p class="note">저장된 에세이가 없습니다.</p>' }
+$('esList').addEventListener('toggle',async e=>{
+  const el=e.target; if(!el.open||!el.dataset?.es||!ES) return; const path=el.dataset.es; if(ES.body[path]) return;
+  try{ ES.body[path]=mdHTML(await ghText(path)) }catch(err){ ES.body[path]=`<p class="note">불러오지 못했습니다 (${esc(ghErrText(err))}).</p>` }
+  el.querySelector('.es-body').innerHTML=ES.body[path];
+},true);
 function renderSig(){
+  if(!$('tab-market').hidden) loadEssays();
   const M=macroEval();
   $('sigMacro').innerHTML=M.map(x=>`<div><span class="nm">${x.nm}<span class="note">${x.sub}</span></span><span class="v ${x.lv}">${x.v}</span></div>`).join('');
   const L=sigEval(), bad=L.filter(x=>x.lv==='bad').length, warn=L.filter(x=>x.lv==='warn').length;
