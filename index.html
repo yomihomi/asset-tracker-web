@@ -350,6 +350,9 @@ input:disabled{opacity:.75}
       <h2 style="margin-top:4px">실물 · 금리 · 물가</h2>
       <div class="sig" id="sigMacro"></div>
       <p class="note" id="sigPhase"></p>
+      <h2 style="margin-top:4px">통화 · 위기 판별</h2>
+      <div class="sig" id="sigFx"></div>
+      <p class="note" id="sigFxStage"></p>
       <details class="more"><summary>신용매수 · 빅테크 투자 입력</summary>
         <div class="lg-ed" style="padding-top:8px">
           <label>신용매수 기준 월<input type="month" id="sg-m"></label>
@@ -1893,6 +1896,29 @@ function macroEval(){
   else out.push({nm:'10년 기대 인플레이션',sub:'다음 자동 조회(평일 20:10) 후 표시됩니다.',v:'–',lv:''});
   return out;
 }
+// 통화로 보는 위기 단계 (10/22 에세이, 기록용): 20일 변화율 기준 달러 대비 강약
+//  1단계 = 유로·엔 강세(달러 대비 +1% 이상) + 원화 약세(−1% 이상) → '유로·엔 > 달러 > 원화'
+//  2단계 = 킹달러: 달러 인덱스 +3% 이상이면서 유로·엔·원화 모두 달러 대비 약세
+function fxEval(){
+  const F=PRICES?.signals?.fx||{}, sg=v=>`${v>=0?'+':''}${v.toFixed(2)}%`;
+  // 달러 대비 강도(%): 유로/달러는 오르면 유로 강세, 달러/엔·달러/원은 오르면 그 통화 약세
+  const st={eur:F.eur?F.eur.chg20:null, jpy:F.jpy?-F.jpy.chg20:null, krw:F.krw?-F.krw.chg20:null};
+  const row=(k,nm,fmt,desc)=>{ const x=F[k]; if(!x) return {nm,sub:'다음 자동 조회(평일 20:10) 후 표시됩니다.',v:'–',lv:''};
+    const s=k==='dxy'? x.chg20 : st[k];
+    return {nm,sub:`${md(x.date)} 기준${x.stale?' · 조회 실패, 직전 값':''} · 20일 ${sg(x.chg20)} · 1년 ${fmt(x.lo)}~${fmt(x.hi)} · ${desc}${k!=='dxy'&&s!=null?` · 달러 대비 ${s>=0?'강세':'약세'} ${Math.abs(s).toFixed(2)}%`:''}`,v:fmt(x.cur),lv:''} };
+  const rows=[row('dxy','달러 인덱스',v=>v.toFixed(2),'유로·엔 비중이 큼. 위기 초기엔 약세, 끝에선 킹달러'),
+    row('jpy','달러/엔',v=>v.toFixed(2),'내려가면 엔 강세(엔캐리 청산 신호)'),
+    row('eur','유로/달러',v=>v.toFixed(4),'올라가면 유로 강세(유로 캐리 청산)')];
+  let stage=0;
+  if(st.eur!=null&&st.jpy!=null&&st.krw!=null){
+    if(F.dxy&&F.dxy.chg20>=3&&st.eur<0&&st.jpy<0&&st.krw<0) stage=2;
+    else if(st.eur>=1&&st.jpy>=1&&st.krw<=-1) stage=1; }
+  const lv= stage===2?'bad':stage===1?'warn':'good';
+  const order= st.eur!=null&&st.jpy!=null&&st.krw!=null? [['유로',st.eur],['엔',st.jpy],['달러',0],['원화',st.krw]].sort((a,b)=>b[1]-a[1]).map(x=>x[0]).join(' > ') : '';
+  const text= !order? '' : stage===2? `2단계 킹달러: 달러가 유로·엔·원화를 모두 누름 (20일 강도 ${order}) — 위기 심화 신호`
+    : stage===1? `1단계: 유로·엔 > 달러 > 원화 (20일 강도 ${order}) — 약한 고리에서 돈이 빠지는 신호, 다음은 킹달러 여부`
+    : `위기 신호 없음 (20일 강도 ${order}). 1단계 = 유로·엔 강세 + 원화 약세, 2단계 = 킹달러`;
+  return {rows,stage,lv,text} }
 // 국면: AI 사이클(위 세 지표 경고 2개 이상 = 균열) × 자산효과(순자산 비율 하락 = 꺾임)
 const PHASE={'00':'AI 정상 + 자산효과 유지 → 지금 국면 유지','10':'AI 균열 + 자산효과 유지 → 초기 경고, 관찰 강화','11':'AI 균열 + 자산효과 꺾임 → 리포트가 말한 전환점 (주가·금리 동반 하락 국면)','01':'AI 정상 + 자산효과 꺾임 → 드문 조합, 다른 요인 확인'};
 /* ---------- 시장 에세이 (비공개 저장소 notes/essays를 읽기 토큰으로 불러옴 — 공개 페이지에는 글이 들어가지 않음) ---------- */
@@ -1940,6 +1966,8 @@ function renderSig(){
   if(!$('tab-market').hidden) loadEssays();
   const M=macroEval();
   $('sigMacro').innerHTML=M.map(x=>`<div><span class="nm">${x.nm}<span class="note">${x.sub}</span></span><span class="v ${x.lv}">${x.v}</span></div>`).join('');
+  const FX=fxEval(); $('sigFx').innerHTML=FX.rows.map(x=>`<div><span class="nm">${x.nm}<span class="note">${x.sub}</span></span><span class="v ${x.lv}">${x.v}</span></div>`).join('');
+  $('sigFxStage').textContent=FX.text? `단계(기록용): ${FX.text}` : '';
   const L=sigEval(), bad=L.filter(x=>x.lv==='bad').length, warn=L.filter(x=>x.lv==='warn').length;
   $('sigList').innerHTML=L.map(x=>`<div><span class="nm">${x.nm}<span class="note">${x.sub}</span></span><span class="v ${x.lv}">${x.v}</span></div>`).join('');
   const chip=$('sigChip');
