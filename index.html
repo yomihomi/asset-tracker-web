@@ -438,9 +438,10 @@ input:disabled{opacity:.75}
     <div class="card">
       <h2>계좌별 현황</h2>
       <div class="seg" role="group" aria-label="평가손익 기간">
-        <button type="button" data-ap="day" aria-pressed="true">전일</button>
-        <button type="button" data-ap="week" aria-pressed="false">이번 주</button>
-        <button type="button" data-ap="month" aria-pressed="false">이번 달</button>
+        <button type="button" data-ap="day" aria-pressed="true">일</button>
+        <button type="button" data-ap="week" aria-pressed="false">주</button>
+        <button type="button" data-ap="month" aria-pressed="false">월</button>
+        <button type="button" data-ap="year" aria-pressed="false">년</button>
         <button type="button" data-ap="all" aria-pressed="false">전체</button>
         <button type="button" data-ap="adj" aria-pressed="false">조정</button>
       </div>
@@ -2046,6 +2047,7 @@ function renderAsset(){
   // 기간별 평가손익: 기준 = 전일(직전 기록) / 이번 주(월요일 전 마지막 기록) / 이번 달(1일 전 마지막 기록)
   if(AP==='all') return renderAcctAll(ports,live,now);
   if(AP==='adj') return renderAcctAdj(ports,live);
+  if(AP==='year') return renderAcctYear(ports,live,now,recs);
   const base= AP==='day'? prevRec : recs.filter(r=>r.date<apStart(AP)).at(-1);
   $('apBase').textContent= base? `기준: ${base.date} 일별 기록${base.src==='excel'?' (엑셀 주간 기록)':''} → 지금` : '비교할 기준 기록이 없습니다.';
   const pc=(g,b)=> b>0? ` (${g>=0?'+':''}${(g/b*100).toFixed(2)}%)` : '';
@@ -2054,6 +2056,47 @@ function renderAsset(){
     const open=AP_OPEN.has(id);
     return `<div class="acct clickable" data-acct="${esc(id)}" role="button" tabindex="0" aria-expanded="${open}"><span class="nm">${esc(p.name||id)}<span class="car">${open?'▾':'▸'}</span>${p.track===false?' <span class="note">· 추이 제외</span>':''}</span><span class="vv"><span class="num">${won(v/1e4)}</span>${g!=null?`<span class="dv num ${g>=0?'pos':'neg'}">${g>=0?'+':''}${won(g/1e4)}${pc(g,den)}</span>`:''}${f&&g!=null?`<span class="dv note">입출금 ${f>=0?'+':''}${won(f/1e4)} 제외</span>`:''}${now&&p.track!==false?`<span class="dv note">비중 ${(v/now*100).toFixed(1)}%</span>`:''}</span></div>`
       + (open? acctItemsHTML(p,base,g) : '');
+  }).join('');
+}
+// 올해(1월 1일 기준): 기준 = 지난해 12월 월 기록 잔액(만원). 저장된 월 기록이 있는 달의 입금은 월 기록 적립(항목별)을 계좌에 나눠 넣고,
+// 그 뒤(앱 기록만 쓰는 달)는 앱 입금 기록을 그대로 씀. 항목(연금·DC·기타) 안에서는 그달 잔액이 늘어난 계좌에 늘어난 만큼 비례해 배분(추정)
+function yearFlows(ports){
+  const y=todayStr().slice(0,4), saved=[...RECS].filter(r=>r.month>=`${y}-01`&&r.month<=todayStr().slice(0,7)).sort((a,b)=>a.month<b.month?-1:1);
+  const prev=k=>{ const all=[...RECS].sort((a,b)=>a.month<b.month?-1:1); return all.filter(r=>r.month<k).at(-1) };
+  const base=prev(`${y}-01`); if(!base) return null;
+  const F={}, T={}, ids=ports.map(([id])=>id), t0=Date.parse(`${y}-01-01`), T1=Date.now(); let wsum={};
+  ids.forEach(id=>{ F[id]=0; wsum[id]=0 });
+  let last=base;
+  for(const r of saved){
+    const w=(T1-Date.parse(r.month+'-15'))/(T1-t0);  // 그달 중간에 들어왔다고 보고 남은 기간 비중(수정 디츠)
+    for(const cat of ['pension','dc','other']){
+      const amt=(n(r.add?.[cat])+(cat==='other'?n(r.add?.once):0))*1e4; if(!amt) continue;
+      const mem=ids.filter(id=>catOf(id)===cat&&(r.bal?.[id]!=null||last.bal?.[id]!=null));
+      const up=mem.map(id=>Math.max(0,n(r.bal?.[id])-n(last.bal?.[id]))), tot=up.reduce((a,b)=>a+b,0);
+      mem.forEach((id,i)=>{ const a= tot>0? amt*up[i]/tot : amt/mem.length; F[id]+=a; wsum[id]+=a*w });
+    }
+    last=r;
+  }
+  const after= saved.length? (()=>{ const [yy,mm]=saved.at(-1).month.split('-').map(Number); return new Date(Date.UTC(yy,mm,0)).toISOString().slice(0,10) })() : `${+y-1}-12-31`;
+  for(const [id,p] of ports) for(const d of p.deposits||[]){ if(String(d.date)<=after||d.type==='div') continue;
+    const a=n(d.amount); F[id]+=a; wsum[id]+=a*(T1-Date.parse(d.date))/(T1-t0) }
+  return {base, F, wsum, after, upto: saved.at(-1)?.month||null};
+}
+function renderAcctYear(ports,live,now,recs){
+  const Y=yearFlows(ports), y=todayStr().slice(0,4);
+  if(!Y){ $('apBase').textContent=`${+y-1}년 12월 월 기록이 없어 올해 손익을 계산할 수 없습니다.`; $('acctList').innerHTML=''; return }
+  const dBase=recs.filter(r=>r.date<`${y}-01-01`).at(-1);  // 종목별 보기는 일별 기록이 있을 때만
+  let tv=0,tb=0,tf=0,tw=0;
+  const rows=ports.map(([id,p])=>{
+    const v=live[id], b= Y.base.bal?.[id]!=null? n(Y.base.bal[id])*1e4 : (n(p.cash)||p.items?.length? 0 : null), f=Y.F[id]||0;
+    if(b==null) return {id,p,v,g:null,f,den:0};
+    const g=v-b-f, den=b+(Y.wsum[id]||0); if(p.track!==false){ tv+=v; tb+=b; tf+=f; tw+=Y.wsum[id]||0 }
+    return {id,p,v,g,f,den} });
+  const tg=tv-tb-tf, pc=(g,b)=> b>0? ` (${g>=0?'+':''}${(g/b*100).toFixed(2)}%)` : '';
+  $('apBase').textContent=`기준: ${Y.base.month} 월 기록 잔액 → 지금. 합계 ${tg>=0?'+':''}${won(tg/1e4)}${pc(tg,tb+tw)} · 올해 입금 ${tf>=0?'+':''}${won(tf/1e4)} 제외${Y.upto?` (${Y.upto}까지는 월 기록 적립을 계좌에 나눠 넣은 추정)`:''}`;
+  $('acctList').innerHTML=rows.map(({id,p,v,g,f,den})=>{ const open=AP_OPEN.has(id);
+    return `<div class="acct clickable" data-acct="${esc(id)}" role="button" tabindex="0" aria-expanded="${open}"><span class="nm">${esc(p.name||id)}<span class="car">${open?'▾':'▸'}</span>${p.track===false?' <span class="note">· 추이 제외</span>':''}</span><span class="vv"><span class="num">${won(v/1e4)}</span>${g!=null?`<span class="dv num ${g>=0?'pos':'neg'}">${g>=0?'+':''}${won(g/1e4)}${pc(g,den)}</span>`:''}${f&&g!=null?`<span class="dv note">입금 ${f>=0?'+':''}${won(f/1e4)} 제외</span>`:''}</span></div>`
+      + (open? (dBase? acctItemsHTML(p,dBase,g) : '<div class="acct-items"><p class="note">지난해 말 일별 기록이 없어 종목별 손익은 볼 수 없습니다. 계좌 합계만 표시합니다.</p></div>') : '');
   }).join('');
 }
 // 전체 기간: 원금 대비 평가금액. 원금 = 입력값 + 입력일 뒤 저축·일회성 입금·출금·계좌 간 이동 (배당·이자·보정은 제외)
@@ -2189,7 +2232,7 @@ async function holdSave(id){
   renderAsset();
 }
 let AP='day'; const AP_OPEN=new Set();
-try{ const v=localStorage.getItem('ap'); if(['day','week','month','all','adj'].includes(v)) AP=v }catch{}
+try{ const v=localStorage.getItem('ap'); if(['day','week','month','year','all','adj'].includes(v)) AP=v }catch{}
 document.querySelectorAll('[data-ap]').forEach(b=>{ b.setAttribute('aria-pressed',b.dataset.ap===AP); b.addEventListener('click',()=>{ AP=b.dataset.ap; document.querySelectorAll('[data-ap]').forEach(x=>x.setAttribute('aria-pressed',x===b)); try{localStorage.setItem('ap',AP)}catch{} renderAsset() }) });
 $('acctList').addEventListener('click',async e=>{
   const sv=e.target.closest('[data-prin-save]');
