@@ -2098,15 +2098,15 @@ function renderAcctYear(ports,live,now,recs){
   const rows=ports.map(([id,p])=>{
     const v=live[id], b= Y.base.bal?.[id]!=null? n(Y.base.bal[id])*1e4 : (n(p.cash)||p.items?.length? 0 : null);
     if(b==null) return {id,p,v,g:null,f:0,den:0};
-    // 올해 처음 산 금 현물은 매입가(잔고 맞추기에서 입력)가 있으면 그대로 씀: 손익 = 평가액 − 수량×매입가 (월 기록으로 추정한 입금보다 정확)
+    // 올해 새로 연 계좌(지난해 말 잔액 0)는 '전체'와 같게: 원금이 있으면 손익 = 평가액 − 원금 (전체와 같은 숫자)
+    const pr= !(b>0)? principalNow(p) : null;
+    if(pr!=null){ const g=v-pr; if(p.track!==false){ tv+=v; tf+=pr; tw+=pr } return {id,p,v,g,f:pr,den:pr,byPrin:true} }
+    // 원금이 없고 올해 처음 산 금 현물에 매입가(잔고 맞추기에서 입력)가 있으면: 손익 = 평가액 − 수량×매입가
     const held=(p.items||[]).filter(x=>n(x.qty)>0), isGold=id==='gold'||/금\s*현물/.test(p.name||'');
     if(isGold&&!(b>0)&&held.length&&held.every(x=>n(x.cost)>0)){
       const cost=held.reduce((a,x)=>a+n(x.qty)*n(x.cost),0), g=v-cost;
       if(p.track!==false){ tv+=v; tf+=cost; tw+=cost }
       return {id,p,v,g,f:cost,den:cost,byCost:true} }
-    // 올해 새로 연 계좌(지난해 말 잔액 0)는 '전체'와 같게: 원금이 입력돼 있으면 손익 = 평가액 − 원금
-    const pr= !(b>0)? principalNow(p) : null;
-    if(pr!=null){ const g=v-pr; if(p.track!==false){ tv+=v; tf+=pr; tw+=pr } return {id,p,v,g,f:pr,den:pr,byPrin:true} }
     const f=Y.F[id]||0;
     // 수정 디츠: 분모 = 기준 + Σ입금×(남은 기간 ÷ 측정 기간). 기준이 0인 계좌(올해 새로 연 계좌)는 첫 입금일부터 측정
     const ev=Y.E[id]||[], T1=Date.now(), s0= b>0||!ev.length? Date.parse(`${y}-01-01`) : Math.min(...ev.map(x=>x.t)), span=Math.max(1,T1-s0);
