@@ -2067,6 +2067,14 @@ function yearFlows(ports){
   const F={}, E={}, ids=ports.map(([id])=>id);  // E[id] = [{t, a}] 입금 시점·금액
   ids.forEach(id=>{ F[id]=0; E[id]=[] });
   const goldIds=ports.filter(([id,p])=>id==='gold'||/금\s*현물/.test(p.name||'')).map(([id])=>id);
+  // 입금 날짜·금액을 아는 계좌(principal.flows: DC·ISA 등)는 월 기록 배분 대신 그 금액을 그대로 씀
+  const lastM=saved.at(-1)?.month||'', known={};
+  for(const [id,p] of ports) for(const x of (Array.isArray(p.principal?.flows)? p.principal.flows : [])){ const m=String(x.d).slice(0,7);
+    if(m>=`${y}-01`&&m<=lastM) (known[id] ||= {})[m]=(known[id][m]||0)+n(x.a) }
+  // 연금 항목(연금저축1·IRP) 나눌 비율: 앱 '저축' 입금 기록의 계좌별 합계(예: 월 50만·25만). 기록이 없으면 잔액 증가분 비례
+  const pr={}; for(const [id,p] of ports) if(catOf(id)==='pension') pr[id]=(p.deposits||[]).filter(d=>d.type==='new'&&n(d.amount)>0).reduce((a,d)=>a+n(d.amount),0);
+  const prSum=Object.values(pr).reduce((a,b)=>a+b,0);
+  const put=(id,t,a)=>{ F[id]+=a; E[id].push({t,a}) };
   let last=base;
   for(const r of saved){
     const t=Date.parse(r.month+'-15');  // 그달 중간에 들어왔다고 봄
@@ -2075,13 +2083,20 @@ function yearFlows(ports){
     const buys=goldIds.map(g=>[g,n(r.bal?.[g])*1e4]).filter(([g,P])=>P>0&&!(n(last.bal?.[g])>0));
     for(const cat of ['pension','dc','other']){
       let amt=(n(r.add?.[cat])+(cat==='other'?n(r.add?.once):0))*1e4;
-      const mem=ids.filter(id=>catOf(id)===cat&&!goldIds.includes(id)&&(r.bal?.[id]!=null||last.bal?.[id]!=null));
+      for(const id of Object.keys(known)) if(catOf(id)===cat){ const a=known[id][r.month]||0; if(a){ put(id,t,a); amt-=a } }
+      amt=Math.max(0,amt);
+      const mem=ids.filter(id=>catOf(id)===cat&&!goldIds.includes(id)&&!known[id]&&(r.bal?.[id]!=null||last.bal?.[id]!=null));
+      if(!mem.length&&!(cat==='other'&&buys.length)) continue;
+      if(cat==='pension'&&prSum>0){ mem.forEach(id=>{ const a=amt*(pr[id]||0)/prSum; if(a) put(id,t,a) }); continue }
       const up=mem.map(id=>Math.max(0,n(r.bal?.[id])-n(last.bal?.[id]))*1e4), tot=up.reduce((a,b)=>a+b,0);  // 원
       const gb= cat==='other'? buys : [], give= gb.length? Math.min(amt,tot) : amt;
-      if(give>0) mem.forEach((id,i)=>{ const a= tot>0? give*up[i]/tot : give/mem.length; F[id]+=a; E[id].push({t,a}) });
+      if(give>0){
+        if(tot>0) mem.forEach((id,i)=>{ if(up[i]) put(id,t,give*up[i]/tot) });
+        else {  // 잔액이 는 계좌가 없으면(손실로 상쇄) 일반계좌, 없으면 잔액이 가장 큰 계좌로
+          const to= mem.includes('stock')? 'stock' : mem.reduce((a,id)=> n(r.bal?.[id])>n(r.bal?.[a])? id : a, mem[0]); if(to) put(to,t,give) } }
       let left=amt-Math.max(0,give);
-      for(const [g,P] of gb){ F[g]+=P; E[g].push({t,a:P}); const cov=Math.min(P,Math.max(0,left)); left-=cov;
-        if(P>cov&&F.stock!=null){ F.stock-=P-cov; E.stock.push({t,a:-(P-cov)}) } }
+      for(const [g,P] of gb){ put(g,t,P); const cov=Math.min(P,Math.max(0,left)); left-=cov;
+        if(P>cov&&F.stock!=null) put('stock',t,-(P-cov)) }
     }
     last=r;
   }
