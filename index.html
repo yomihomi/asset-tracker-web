@@ -2066,14 +2066,22 @@ function yearFlows(ports){
   const base=prev(`${y}-01`); if(!base) return null;
   const F={}, E={}, ids=ports.map(([id])=>id);  // E[id] = [{t, a}] 입금 시점·금액
   ids.forEach(id=>{ F[id]=0; E[id]=[] });
+  const goldIds=ports.filter(([id,p])=>id==='gold'||/금\s*현물/.test(p.name||'')).map(([id])=>id);
   let last=base;
   for(const r of saved){
     const t=Date.parse(r.month+'-15');  // 그달 중간에 들어왔다고 봄
+    // 금 현물: 금값이 오르면 입금 없이도 잔액이 늘어나므로 배분 대상에서 뺌. 처음 산 달(직전 잔액 0)만 그달 잔액 전체를 입금으로 봄.
+    // 그달 '기타' 적립은 다른 계좌의 잔액 증가분에 먼저 배분하고 남는 돈을 금 매수에 씀. 그래도 모자라는 금 매수액은 일반계좌에서 옮긴 돈으로 봄
+    const buys=goldIds.map(g=>[g,n(r.bal?.[g])*1e4]).filter(([g,P])=>P>0&&!(n(last.bal?.[g])>0));
     for(const cat of ['pension','dc','other']){
-      const amt=(n(r.add?.[cat])+(cat==='other'?n(r.add?.once):0))*1e4; if(!amt) continue;
-      const mem=ids.filter(id=>catOf(id)===cat&&(r.bal?.[id]!=null||last.bal?.[id]!=null));
-      const up=mem.map(id=>Math.max(0,n(r.bal?.[id])-n(last.bal?.[id]))), tot=up.reduce((a,b)=>a+b,0);
-      mem.forEach((id,i)=>{ const a= tot>0? amt*up[i]/tot : amt/mem.length; F[id]+=a; E[id].push({t,a}) });
+      let amt=(n(r.add?.[cat])+(cat==='other'?n(r.add?.once):0))*1e4;
+      const mem=ids.filter(id=>catOf(id)===cat&&!goldIds.includes(id)&&(r.bal?.[id]!=null||last.bal?.[id]!=null));
+      const up=mem.map(id=>Math.max(0,n(r.bal?.[id])-n(last.bal?.[id]))*1e4), tot=up.reduce((a,b)=>a+b,0);  // 원
+      const gb= cat==='other'? buys : [], give= gb.length? Math.min(amt,tot) : amt;
+      if(give>0) mem.forEach((id,i)=>{ const a= tot>0? give*up[i]/tot : give/mem.length; F[id]+=a; E[id].push({t,a}) });
+      let left=amt-Math.max(0,give);
+      for(const [g,P] of gb){ F[g]+=P; E[g].push({t,a:P}); const cov=Math.min(P,Math.max(0,left)); left-=cov;
+        if(P>cov&&F.stock!=null){ F.stock-=P-cov; E.stock.push({t,a:-(P-cov)}) } }
     }
     last=r;
   }
