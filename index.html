@@ -2064,23 +2064,23 @@ function yearFlows(ports){
   const y=todayStr().slice(0,4), saved=[...RECS].filter(r=>r.month>=`${y}-01`&&r.month<=todayStr().slice(0,7)).sort((a,b)=>a.month<b.month?-1:1);
   const prev=k=>{ const all=[...RECS].sort((a,b)=>a.month<b.month?-1:1); return all.filter(r=>r.month<k).at(-1) };
   const base=prev(`${y}-01`); if(!base) return null;
-  const F={}, T={}, ids=ports.map(([id])=>id), t0=Date.parse(`${y}-01-01`), T1=Date.now(); let wsum={};
-  ids.forEach(id=>{ F[id]=0; wsum[id]=0 });
+  const F={}, E={}, ids=ports.map(([id])=>id);  // E[id] = [{t, a}] 입금 시점·금액
+  ids.forEach(id=>{ F[id]=0; E[id]=[] });
   let last=base;
   for(const r of saved){
-    const w=(T1-Date.parse(r.month+'-15'))/(T1-t0);  // 그달 중간에 들어왔다고 보고 남은 기간 비중(수정 디츠)
+    const t=Date.parse(r.month+'-15');  // 그달 중간에 들어왔다고 봄
     for(const cat of ['pension','dc','other']){
       const amt=(n(r.add?.[cat])+(cat==='other'?n(r.add?.once):0))*1e4; if(!amt) continue;
       const mem=ids.filter(id=>catOf(id)===cat&&(r.bal?.[id]!=null||last.bal?.[id]!=null));
       const up=mem.map(id=>Math.max(0,n(r.bal?.[id])-n(last.bal?.[id]))), tot=up.reduce((a,b)=>a+b,0);
-      mem.forEach((id,i)=>{ const a= tot>0? amt*up[i]/tot : amt/mem.length; F[id]+=a; wsum[id]+=a*w });
+      mem.forEach((id,i)=>{ const a= tot>0? amt*up[i]/tot : amt/mem.length; F[id]+=a; E[id].push({t,a}) });
     }
     last=r;
   }
   const after= saved.length? (()=>{ const [yy,mm]=saved.at(-1).month.split('-').map(Number); return new Date(Date.UTC(yy,mm,0)).toISOString().slice(0,10) })() : `${+y-1}-12-31`;
   for(const [id,p] of ports) for(const d of p.deposits||[]){ if(String(d.date)<=after||d.type==='div') continue;
-    const a=n(d.amount); F[id]+=a; wsum[id]+=a*(T1-Date.parse(d.date))/(T1-t0) }
-  return {base, F, wsum, after, upto: saved.at(-1)?.month||null};
+    const a=n(d.amount); F[id]+=a; E[id].push({t:Date.parse(d.date),a}) }
+  return {base, F, E, after, upto: saved.at(-1)?.month||null};
 }
 function renderAcctYear(ports,live,now,recs){
   const Y=yearFlows(ports), y=todayStr().slice(0,4);
@@ -2090,7 +2090,10 @@ function renderAcctYear(ports,live,now,recs){
   const rows=ports.map(([id,p])=>{
     const v=live[id], b= Y.base.bal?.[id]!=null? n(Y.base.bal[id])*1e4 : (n(p.cash)||p.items?.length? 0 : null), f=Y.F[id]||0;
     if(b==null) return {id,p,v,g:null,f,den:0};
-    const g=v-b-f, den=b+(Y.wsum[id]||0); if(p.track!==false){ tv+=v; tb+=b; tf+=f; tw+=Y.wsum[id]||0 }
+    // 수정 디츠: 분모 = 기준 + Σ입금×(남은 기간 ÷ 측정 기간). 기준이 0인 계좌(올해 새로 연 계좌)는 첫 입금일부터 측정
+    const ev=Y.E[id]||[], T1=Date.now(), s0= b>0||!ev.length? Date.parse(`${y}-01-01`) : Math.min(...ev.map(x=>x.t)), span=Math.max(1,T1-s0);
+    const w=ev.reduce((a,x)=>a+x.a*Math.max(0,Math.min(1,(T1-x.t)/span)),0);
+    const g=v-b-f, den=b+w; if(p.track!==false){ tv+=v; tb+=b; tf+=f; tw+=ev.reduce((a,x)=>a+x.a*Math.max(0,Math.min(1,(T1-x.t)/(T1-Date.parse(`${y}-01-01`)))),0) }
     return {id,p,v,g,f,den} });
   const tg=tv-tb-tf, pc=(g,b)=> b>0? ` (${g>=0?'+':''}${(g/b*100).toFixed(2)}%)` : '';
   $('apBase').textContent=`기준: ${Y.base.month} 월 기록 잔액 → 지금. 합계 ${tg>=0?'+':''}${won(tg/1e4)}${pc(tg,tb+tw)} · 올해 입금 ${tf>=0?'+':''}${won(tf/1e4)} 제외${Y.upto?` (${Y.upto}까지는 월 기록 적립을 계좌에 나눠 넣은 추정)`:''}`;
