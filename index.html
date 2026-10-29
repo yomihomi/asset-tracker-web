@@ -2104,6 +2104,9 @@ function renderAcctYear(ports,live,now,recs){
       const cost=held.reduce((a,x)=>a+n(x.qty)*n(x.cost),0), g=v-cost;
       if(p.track!==false){ tv+=v; tf+=cost; tw+=cost }
       return {id,p,v,g,f:cost,den:cost,byCost:true} }
+    // 올해 새로 연 계좌(지난해 말 잔액 0)는 '전체'와 같게: 원금이 입력돼 있으면 손익 = 평가액 − 원금
+    const pr= !(b>0)? principalNow(p) : null;
+    if(pr!=null){ const g=v-pr; if(p.track!==false){ tv+=v; tf+=pr; tw+=pr } return {id,p,v,g,f:pr,den:pr,byPrin:true} }
     const f=Y.F[id]||0;
     // 수정 디츠: 분모 = 기준 + Σ입금×(남은 기간 ÷ 측정 기간). 기준이 0인 계좌(올해 새로 연 계좌)는 첫 입금일부터 측정
     const ev=Y.E[id]||[], T1=Date.now(), s0= b>0||!ev.length? Date.parse(`${y}-01-01`) : Math.min(...ev.map(x=>x.t)), span=Math.max(1,T1-s0);
@@ -2112,8 +2115,8 @@ function renderAcctYear(ports,live,now,recs){
     return {id,p,v,g,f,den} });
   const tg=tv-tb-tf, pc=(g,b)=> b>0? ` (${g>=0?'+':''}${(g/b*100).toFixed(2)}%)` : '';
   $('apBase').textContent=`기준: ${Y.base.month} 월 기록 잔액 → 지금. 합계 ${tg>=0?'+':''}${won(tg/1e4)}${pc(tg,tb+tw)} · 올해 입금 ${tf>=0?'+':''}${won(tf/1e4)} 제외${Y.upto?` (${Y.upto}까지는 월 기록 적립을 계좌에 나눠 넣은 추정)`:''}`;
-  $('acctList').innerHTML=rows.map(({id,p,v,g,f,den,byCost})=>{ const open=AP_OPEN.has(id);
-    return `<div class="acct clickable" data-acct="${esc(id)}" role="button" tabindex="0" aria-expanded="${open}"><span class="nm">${esc(p.name||id)}<span class="car">${open?'▾':'▸'}</span>${p.track===false?' <span class="note">· 추이 제외</span>':''}</span><span class="vv"><span class="num">${won(v/1e4)}</span>${g!=null?`<span class="dv num ${g>=0?'pos':'neg'}">${g>=0?'+':''}${won(g/1e4)}${pc(g,den)}</span>`:''}${byCost?`<span class="dv note">매입금액 ${won(f/1e4)} 기준</span>`: f&&g!=null?`<span class="dv note">입금 ${f>=0?'+':''}${won(f/1e4)} 제외</span>`:''}</span></div>`
+  $('acctList').innerHTML=rows.map(({id,p,v,g,f,den,byCost,byPrin})=>{ const open=AP_OPEN.has(id);
+    return `<div class="acct clickable" data-acct="${esc(id)}" role="button" tabindex="0" aria-expanded="${open}"><span class="nm">${esc(p.name||id)}<span class="car">${open?'▾':'▸'}</span>${p.track===false?' <span class="note">· 추이 제외</span>':''}</span><span class="vv"><span class="num">${won(v/1e4)}</span>${g!=null?`<span class="dv num ${g>=0?'pos':'neg'}">${g>=0?'+':''}${won(g/1e4)}${pc(g,den)}</span>`:''}${byCost?`<span class="dv note">매입금액 ${won(f/1e4)} 기준</span>`: byPrin?`<span class="dv note">원금 ${won(f/1e4)} 기준 (올해 개설)</span>`: f&&g!=null?`<span class="dv note">입금 ${f>=0?'+':''}${won(f/1e4)} 제외</span>`:''}</span></div>`
       + (open? (dBase? acctItemsHTML(p,dBase,g) : '<div class="acct-items"><p class="note">지난해 말 일별 기록이 없어 종목별 손익은 볼 수 없습니다. 계좌 합계만 표시합니다.</p></div>') : '');
   }).join('');
 }
