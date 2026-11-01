@@ -156,7 +156,7 @@ label.chk input{width:auto;accent-color:var(--accent)}
 details.more{border-top:1px solid var(--line);padding-top:10px}
 details.more summary{cursor:pointer;font-size:13.5px;color:var(--muted)}
 tr.sub td{font-size:13px;color:var(--muted);padding-top:2px;padding-bottom:2px}
-tr.clickable{cursor:pointer} #bdCls .car{color:var(--muted);font-size:12px;margin-left:4px}
+tr.clickable{cursor:pointer} #bdCls .car,#rbCls .car{color:var(--muted);font-size:12px;margin-left:4px}
 .es{border-top:1px solid var(--line);padding:10px 0}
 .es>summary{cursor:pointer;list-style:none;display:flex;flex-direction:column;gap:2px}
 .es>summary b{font-size:14.5px}
@@ -620,6 +620,10 @@ input:disabled{opacity:.75}
         <div><span class="k">매도 합계</span><span class="v num" id="rbSell">–</span></div>
         <div><span class="k">매매 후 예수금</span><span class="v num" id="rbLeft">–</span></div>
       </div>
+      <div class="table-wrap" id="rbClsWrap" hidden><table>
+        <thead><tr><th>자산군 <span class="note">(누르면 종목)</span></th><th>현재</th><th>목표</th><th>주문 후</th></tr></thead>
+        <tbody id="rbCls"></tbody>
+      </table></div>
       <button class="btn ghost" type="button" id="rbReset">추천 주문으로 되돌리기</button>
       <p class="note" id="rbWsum"></p>
     </div>
@@ -1118,6 +1122,21 @@ function rbRenderAll(){
     </div></div>`).join('') : '<p class="empty">종목이 없습니다. 종목 추가를 누르세요.</p>';
   rbCalc();
 }
+let RBC=null; const RB_CLS_OPEN=new Set();
+function rbClsRender(){
+  const wrap=$('rbClsWrap'); if(!RBC||!(RBC.wsum>0)||!RBC.rows.length){ wrap.hidden=true; return } wrap.hidden=false;
+  const g={}; for(const x of RBC.rows){ const c=x.cls; (g[c] ||= {now:0,w:0,aft:0,items:[]}); g[c].now+=x.now; g[c].w+=x.w; g[c].aft+=x.aft; g[c].items.push(x) }
+  (g.cash ||= {now:0,w:0,aft:0,items:[]}); g.cash.now+=RBC.cashNow; g.cash.aft+=RBC.cashAft; g.cash.w+=Math.max(0,100-RBC.wsum);  // 목표 합계가 100% 미만이면 나머지는 현금
+  const f=v=>v.toFixed(1)+'%', order=[...CLS_ORDER,...Object.keys(g).filter(c=>!CLS_ORDER.includes(c))];
+  $('rbCls').innerHTML=order.filter(c=>g[c]&&(g[c].now>0.05||g[c].w>0||g[c].aft>0.05)).map(c=>{ const x=g[c], op=RB_CLS_OPEN.has(c);
+    return `<tr class="clickable" data-rcls="${esc(c)}" tabindex="0" aria-expanded="${op}"><td>${c==='cash'?'현금성':esc(CLS_LABEL[c]||clsName(c))}<span class="car">${op?'▾':'▸'}</span></td><td class="num">${f(x.now)}</td><td class="num">${+x.w.toFixed(1)}%</td><td class="num">${f(x.aft)}</td></tr>`
+      + (op? x.items.map(t=>`<tr class="sub"><td>└ ${esc(t.name)}</td><td class="num">${f(t.now)}</td><td class="num">${+t.w.toFixed(1)}%</td><td class="num">${f(t.aft)}</td></tr>`).join('')
+        + (c==='cash'? `<tr class="sub"><td>└ 예수금</td><td class="num">${f(RBC.cashNow)}</td><td class="num">${RBC.wsum<100?+(100-RBC.wsum).toFixed(1)+'%':'–'}</td><td class="num">${f(RBC.cashAft)}</td></tr>` : '') : '');
+  }).join('');
+}
+const rclsToggle=e=>{ const r=e.target.closest('[data-rcls]'); if(!r) return; if(e.type==='keydown'&&e.key!=='Enter'&&e.key!==' ') return; if(e.type==='keydown') e.preventDefault();
+  const c=r.dataset.rcls; RB_CLS_OPEN.has(c)?RB_CLS_OPEN.delete(c):RB_CLS_OPEN.add(c); rbClsRender() };
+$('rbCls').addEventListener('click',rclsToggle); $('rbCls').addEventListener('keydown',rclsToggle);
 function rbCalc(){
   if(!draft) return;
   const r=rbPlan(draft,0,MD), it=draft.items||[], band=n(draft.band||5);
@@ -1137,6 +1156,10 @@ function rbCalc(){
   $('rbTot').textContent=wonF(r.tot0+n(draft.cashUsd)*n(PRICES?.fx)); $('rbBuy').textContent=wonF(buy); $('rbSell').textContent=wonF(sell);
   $('rbLeft').textContent=wonF(cashAfter); $('rbLeft').style.color= cashAfter<0?'var(--bad)':'';
   const drifts=driftList(it.map((x,i)=>({name:x.name,w:x.w,now:r.tot0? r.val[i]/r.tot0*100:0})),band);
+  // 자산군 표 (묶음 화면과 같은 모양): 현재·목표·주문 후, 자산군을 누르면 종목
+  RBC={rows:it.map((x,i)=>({name:x.name,cls:x.cls||autoCls(x),w:n(x.w),now:r.tot0? r.val[i]/r.tot0*100:0,aft:totAfter? after[i]/totAfter*100:0})),
+    cashNow:r.tot0? n(draft.cash)/r.tot0*100:0, cashAft:totAfter? cashAfter/totAfter*100:0, wsum:wSum(draft)};
+  rbClsRender();
   it.forEach((x,i)=>{
     const nowW=r.tot0? r.val[i]/r.tot0*100:0, aftW=totAfter? after[i]/totAfter*100:0, lim=driftLim(x.w,band), out=Math.abs(nowW-n(x.w))>lim+1e-9;
     const el=$('ir-'+i); if(!el) return;
