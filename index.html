@@ -1633,6 +1633,7 @@ const bdDoc=()=>STATE?.bundles?.core||null;
 const bdName=b=>String(b?.name||'').trim()||'개인연금 성장형';
 const bdIn=x=>{ const c=x.cls||autoCls(x); return !(c.startsWith('stock:')||x.src==='usdm') };
 const isCashItem=x=>(x.cls||autoCls(x))==='cash';
+const stockHold=b=> b?.stockHoldUntil&&todayStr()<b.stockHoldUntil ? b.stockHoldUntil : '';
 function bundlePlan(){
   const b=bdDoc(); if(!b) return null;
   const mem=(b.members||[]).filter(m=>PF[m.id]), model=(b.model||[]).map(t=>({...t,cls:t.cls||autoCls(t)}));
@@ -1666,9 +1667,10 @@ function bundlePlan(){
       orders.push({acct:stockM.id,code:t.code,name:t.name,side:'buy',q,p:t.p,reloc:true});
       const a=q*t.p; spend[m.id]+=a; spend[stockM.id]-=a; HA[t.code][m.id]-=a; (HA[t.code][stockM.id]=(HA[t.code][stockM.id]||0)+a) } }
   let budget=Math.max(0,cashAll-cashT);  // 현금 목표를 넘는 돈만 매수에 씀
+  const hold=stockHold(b);  // 이 날짜 전에는 일반계좌에서 국내 주식형만 삼 (해외 ETF 등은 과세라 미룸)
   for(let r=0;r<3;r++) for(const role of ['pension2','isa','stock']){
     const m=mem.find(m=>m.role===role); if(!m) continue;
-    const cands=items.filter(t=>t.p>0&&t.T-t.H>=t.p&&((PLACE[t.cls]||PLACE_DEF)[r]===role)).sort((a,b)=>(b.T-b.H)-(a.T-a.H));
+    const cands=items.filter(t=>t.p>0&&t.T-t.H>=t.p&&((PLACE[t.cls]||PLACE_DEF)[r]===role)&&!(role==='stock'&&hold&&t.cls!=='kr')).sort((a,b)=>(b.T-b.H)-(a.T-a.H));
     for(const t of cands){ const amt=Math.min(t.T-t.H,spend[m.id],budget); const q=Math.floor(amt/t.p); if(q<=0) continue;
       orders.push({acct:m.id,code:t.code,name:t.name,side:'buy',q,p:t.p}); const a=q*t.p; t.H+=a; spend[m.id]-=a; budget-=a; cashAll-=a } }
   const merged=[]; for(const o of orders){ const e=merged.find(x=>x.acct===o.acct&&x.code===o.code&&x.side===o.side); if(e){ e.q+=o.q; e.reloc=e.reloc||o.reloc } else merged.push({...o}) }
@@ -1682,7 +1684,7 @@ function renderBundle(){
   const P=bundlePlan();
   if(!P){ $('bdInfo').textContent='묶음 설정이 아직 없습니다. Claude에게 묶음 설정을 요청하세요.'; $('bdOrders').innerHTML=''; $('bdCls').innerHTML=''; return }
   const nm=id=>esc(PF[id]?.name||id);
-  $('bdInfo').textContent=`묶음: ${P.mem.map(m=>PF[m.id]?.name||m.id).join(' · ')} · 목표: ${bdName(P.b)} (${P.model.length}종목)${P.reserve?` · 일반계좌 RP 중 ${wonF(P.reserve)}은 옮길 돈으로 남겨 두고 계산`:''}`;
+  $('bdInfo').textContent=`묶음: ${P.mem.map(m=>PF[m.id]?.name||m.id).join(' · ')} · 목표: ${bdName(P.b)} (${P.model.length}종목)${P.reserve?` · 일반계좌 RP 중 ${wonF(P.reserve)}은 옮길 돈으로 남겨 두고 계산`:''}${stockHold(P.b)?` · 일반계좌는 ${stockHold(P.b)} 전까지 국내 주식형만 매수 (해외 ETF·리츠 등은 그때부터)`:''}`;
   if(document.activeElement!==$('bdReserve')) $('bdReserve').value=n(P.b.reserve);
   // 사용자가 고친 주문은 유지
   const ords=P.orders.map(o=>{ const e=BORD[bkey(o)]; return e?.edited? {...o,q:e.q,p:e.p} : o });
