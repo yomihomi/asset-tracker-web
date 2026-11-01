@@ -50,7 +50,7 @@ header.top .asof{color:var(--muted);font-size:13px}
 .kv > div{display:flex;flex-direction:column;gap:2px;min-width:0}
 .kv .k{font-size:12.5px;color:var(--muted)} .kv .v{font-size:17px;font-weight:600}
 .note{font-size:12.5px;color:var(--muted);margin:0}
-.bar{height:8px;background:var(--line);border-radius:99px;overflow:hidden;border:1px solid color-mix(in srgb,var(--muted) 45%,transparent)}
+.bar{height:12px;background:color-mix(in srgb,var(--muted) 28%,var(--surface));border-radius:99px;overflow:hidden}
 .bar > i{display:block;height:100%;background:var(--accent);border-radius:99px}
 .gap-line{display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap}
 .gap-line .v{font-size:26px;font-weight:600}
@@ -910,6 +910,7 @@ function render(){
   $('needSave').textContent= need===null?'계산 불가':`월 ${won(needOther)}`;
   $('curSave').textContent=`월 ${won(curNoDc)}`;
   $('saveBar').style.width= needOther? Math.min(100,curNoDc/needOther*100)+'%':'100%';
+  $('saveBar').style.background= needOther&&curNoDc<needOther? 'var(--warn)' : 'var(--good)';  // 부족하면 주황, 충분하면 초록
   const gc=$('gapChip');
   if(needOther===null){gc.className='chip bad';gc.textContent='목표 나이가 지났거나 저축만으로 도달 불가'}
   else if(curNoDc>=needOther){gc.className='chip good';gc.textContent=`월 ${won(curNoDc-needOther)} 여유`}
