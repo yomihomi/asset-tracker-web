@@ -1121,6 +1121,7 @@ function rbCalc(){
     const o=ORD[i], set=(id,v)=>{const el=$(id); if(el&&document.activeElement!==el) el.value=v};
     set(`o-${i}-side`,o.side); set(`o-${i}-q`,o.q); set(`o-${i}-p`,o.p);
     $('ord-'+i)?.setAttribute('class','ord '+o.side);
+    const row=$('rbItems').querySelector(`[data-i="${i}"]`); if(row) row.style.order= o.side==='sell'?0: o.side==='buy'?1:2; // 매도 → 매수 → 주문 없음 순으로 보이기
   });
   // 실제 주문 기준 합계와 주문 후 비중
   let buy=0,sell=0; const after=[];
@@ -1700,6 +1701,7 @@ function renderBundle(){
   $('bdCls').innerHTML=rows.join('');
   // 계좌별 주문
   const by={}; ords.forEach(o=>(by[o.acct] ||= []).push(o));
+  Object.values(by).forEach(a=>a.sort((x,y)=>(x.side==='sell'?0:1)-(y.side==='sell'?0:1))); // 계좌마다 매도 먼저
   // 입력 중인 칸을 먼저 놓아 줌: 지우는 도중 blur→change→renderBundle 이 겹치면 innerHTML 이 실패함
   if($('bdOrders').contains(document.activeElement)) document.activeElement.blur();
   $('bdOrders').innerHTML= ords.length? P.mem.filter(m=>by[m.id]).map(m=>`<div class="item"><div class="item-h"><b>${nm(m.id)}</b><span class="note" style="margin-left:auto">${(()=>{const rp=(PF[m.id].items||[]).filter(x=>isCashItem(x)&&isManual(x)).reduce((t,x)=>t+n(x.qty)*n(x.price),0); return rp? `예수금 ${wonF(n(PF[m.id].cash))} + RP ${wonF(rp)}${m.role==='stock'&&P.reserve?` (남겨둘 ${wonF(P.reserve)} 제외)`:''}` : `예수금 ${wonF(n(PF[m.id].cash))}`})()}</span></div>
