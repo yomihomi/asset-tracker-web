@@ -14,6 +14,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap">
+<script>try{const t=localStorage.getItem('theme'); if(t==='light'||t==='dark'){ document.documentElement.dataset.theme=t; document.querySelector('meta[name=color-scheme]').content=t }}catch{}</script>
 <style>
 /* Layout: 한 줄 모바일 앱. 위에서부터 판정 → 목표 갭 → 나이 눈금 → 시뮬레이션 → 실적, 하단 고정 탭바 */
 :root{
@@ -666,6 +667,15 @@ input:disabled{opacity:.75}
   <!-- 설정 -->
   <section id="tab-set" hidden style="display:flex;flex-direction:column;gap:14px">
     <div class="card">
+      <h2>화면</h2>
+      <div class="seg" role="group" aria-label="화면 테마">
+        <button type="button" data-theme-set="auto">자동 (휴대폰 설정)</button>
+        <button type="button" data-theme-set="dark">어둡게</button>
+        <button type="button" data-theme-set="light">밝게</button>
+      </div>
+      <p class="note">휴대폰 브라우저가 페이지를 직접 어둡게 바꾸면(삼성 인터넷 등) 막대·표시 색이 탁해질 수 있습니다. 그럴 땐 '어둡게'를 고르면 앱의 다크 색을 그대로 씁니다.</p>
+    </div>
+    <div class="card">
       <h2>계산 가정</h2>
       <form id="setForm" novalidate>
         <fieldset>
@@ -1021,6 +1031,13 @@ $('setForm').addEventListener('submit',async e=>{
 });
 
 /* ---------- 탭·시나리오 ---------- */
+// 화면 테마: 자동(휴대폰 설정) / 어둡게 / 밝게 — 이 기기에만 저장
+function themeSeg(){ let t='auto'; try{ t=localStorage.getItem('theme')||'auto' }catch{} document.querySelectorAll('[data-theme-set]').forEach(b=>b.setAttribute('aria-pressed',b.dataset.themeSet===t)) }
+document.querySelectorAll('[data-theme-set]').forEach(b=>b.addEventListener('click',()=>{ const t=b.dataset.themeSet;
+  try{ t==='auto'? localStorage.removeItem('theme') : localStorage.setItem('theme',t) }catch{}
+  if(t==='auto') delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme=t;
+  const mc=document.querySelector('meta[name=color-scheme]'); if(mc) mc.content= t==='auto'? 'light dark' : t; themeSeg() }));
+themeSeg();
 document.querySelectorAll('nav.tabs button').forEach(b=>b.addEventListener('click',()=>{
   document.querySelectorAll('nav.tabs button').forEach(x=>x.removeAttribute('aria-current')); b.setAttribute('aria-current','page');
   ['home','market','asset','input','rebal','set'].forEach(t=>$('tab-'+t).hidden=t!==b.dataset.tab); window.scrollTo({top:0});
