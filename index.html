@@ -1074,6 +1074,10 @@ function rbPlan(p,dep,md){
     d=it.map((x,i)=>n(x.price)>0?Math.floor(al[i]/n(x.price)):0);
   }
   let left=cash-d.reduce((a,q,i)=>a+q*n(it[i].price),0);
+  for(let g=0;g<5000&&left<0;g++){ // 현금이 모자라면: 주문 후 목표를 가장 많이 넘는 매수 종목부터 1주씩 줄임
+    let bi=-1,bo=-Infinity; it.forEach((x,i)=>{const pr=n(x.price); if(d[i]>0&&pr>0){const over=val[i]+d[i]*pr-tgt[i]; if(over>bo){bo=over;bi=i}}});
+    if(bi<0) break; d[bi]--; left+=n(it[bi].price);
+  }
   for(let g=0;g<5000;g++){ // 남은 현금: 가장 모자란 종목부터 1주씩
     let bi=-1,bg=0; it.forEach((x,i)=>{const pr=n(x.price); if(pr>0&&pr<=left){const gap=tgt[i]-(val[i]+d[i]*pr); if(gap>bg){bg=gap;bi=i}}});
     if(bi<0) break; d[bi]++; left-=n(it[bi].price);
