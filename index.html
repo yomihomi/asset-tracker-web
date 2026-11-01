@@ -1579,15 +1579,16 @@ function dayChartSVG(rows){
   return s+'</svg>';
 }
 // 자산군 분류: 종목 이름으로 자동 판단(공개 코드에 보유 종목을 적지 않기 위해), 종목 카드에서 직접 지정 가능
-const CLS_OPTS=[['','자동'],['us','미국 주식'],['kr','한국 주식 (지수)'],['cn','중국 주식'],['in','인도 주식'],['jp','일본 주식'],['stock:반도체','개별주 · 반도체'],['stock:바이오','개별주 · 바이오'],['stock:AI','개별주 · AI'],['stock:기타','개별주 · 기타'],['gold','금'],['bond_us','미국 채권'],['bond_kr','국내 채권'],['mix','주식·채권 혼합 (한국주식 40 / 미국채 60)'],['cash','현금성'],['etc','기타']];
-const CLS_LABEL={us:'미국 주식',kr:'한국 주식 (지수)',cn:'중국 주식',in:'인도 주식',jp:'일본 주식',stock:'개별주',gold:'금',bond_us:'미국 채권',bond_kr:'국내 채권',cash:'현금성',etc:'기타'};
-const CLS_ORDER=['us','kr','jp','cn','in','stock','gold','bond_us','bond_kr','cash','etc'];
+const CLS_OPTS=[['','자동'],['us','미국 주식'],['kr','한국 주식 (지수)'],['cn','중국 주식'],['in','인도 주식'],['jp','일본 주식'],['stock:반도체','개별주 · 반도체'],['stock:바이오','개별주 · 바이오'],['stock:AI','개별주 · AI'],['stock:기타','개별주 · 기타'],['gold','금'],['reit','리츠'],['bond_us','미국 채권'],['bond_kr','국내 채권'],['mix','주식·채권 혼합 (한국주식 50 / 미국채 50)'],['cash','현금성'],['etc','기타']];
+const CLS_LABEL={us:'미국 주식',kr:'한국 주식 (지수)',cn:'중국 주식',in:'인도 주식',jp:'일본 주식',stock:'개별주',gold:'금',reit:'리츠',bond_us:'미국 채권',bond_kr:'국내 채권',cash:'현금성',etc:'기타'};
+const CLS_ORDER=['us','kr','jp','cn','in','stock','gold','reit','bond_us','bond_kr','cash','etc'];
 const clsName=c=> c.startsWith('stock:')? `개별주 · ${c.slice(6)}` : c==='mix'? '혼합' : CLS_LABEL[c]||c;
 function autoCls(x){
   const nm=String(x.name||'').replace(/\s/g,''), u=nm.toUpperCase();
   if(nm.includes('혼합')) return 'mix';
   if(/KOFR|CD금리|SOFR|MMF|단기채|머니마켓|예수금/.test(u)||/^(원화|달러)?RP$/.test(u)||u.endsWith('RP')) return 'cash';
   if(x.src==='gold'||/금현물|국제금|골드|GOLD/.test(u)) return 'gold';
+  if(/리츠|REIT|부동산/.test(u)) return 'reit';
   if(/미국채|미국\d+년|美國債|TREASURY/.test(u)||(nm.includes('미국')&&nm.includes('국채'))) return 'bond_us';
   if(/국고채|국채|통안채|회사채|채권/.test(nm)) return 'bond_kr';
   if(/S&P|S＆P|나스닥|NASDAQ|다우|미국/.test(u)) return 'us';
@@ -1604,7 +1605,7 @@ function clsBreakdown(){
   const add=(c,acct,v,sec)=>{ if(!v) return; tot[c]=(tot[c]||0)+v; ((byAcct[c] ||= {})[acct]=(byAcct[c][acct]||0)+v); if(sec) sector[sec]=(sector[sec]||0)+v; all+=v };
   for(const [id,p] of Object.entries(STATE?.portfolios||{})){
     for(const x of p.items||[]){ const v=n(x.qty)*epx(x); if(!v) continue; const c=x.cls||autoCls(x);
-      if(c==='mix'){ add('kr',id,v*.4); add('bond_us',id,v*.6) }
+      if(c==='mix'){ add('kr',id,v*.5); add('bond_us',id,v*.5) }  // KODEX 200미국채혼합50: 2026-06-30부터 50:50
       else if(c.startsWith('stock:')) add('stock',id,v,c.slice(6));
       else add(c,id,v); }
     add('cash',id,n(p.cash)+n(p.cashUsd)*n(PRICES?.fx));
