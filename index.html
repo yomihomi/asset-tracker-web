@@ -155,6 +155,8 @@ label.chk input{width:auto;accent-color:var(--accent)}
 .sig .v.warn{color:var(--warn)} .sig .v.bad{color:var(--bad)} .sig .v.good{color:var(--good)}
 details.more{border-top:1px solid var(--line);padding-top:10px}
 details.more summary{cursor:pointer;font-size:13.5px;color:var(--muted)}
+tr.sub td{font-size:13px;color:var(--muted);padding-top:2px;padding-bottom:2px}
+tr.clickable{cursor:pointer} #bdCls .car{color:var(--muted);font-size:12px;margin-left:4px}
 .es{border-top:1px solid var(--line);padding:10px 0}
 .es>summary{cursor:pointer;list-style:none;display:flex;flex-direction:column;gap:2px}
 .es>summary b{font-size:14.5px}
@@ -578,10 +580,10 @@ input:disabled{opacity:.75}
         <div><span class="k">매매 후 현금 (목표)</span><span class="v num" id="bdCash">–</span></div>
       </div>
       <div class="table-wrap"><table>
-        <thead><tr><th>자산군</th><th>현재</th><th>목표</th><th>주문 후</th></tr></thead>
+        <thead><tr><th>자산군 <span class="note">(누르면 종목)</span></th><th>현재</th><th>목표</th><th>주문 후</th></tr></thead>
         <tbody id="bdCls"></tbody>
       </table></div>
-      <details class="more" open><summary>종목별 목표</summary>
+      <details class="more"><summary>종목별 목표 (보유 계좌 포함)</summary>
         <div class="table-wrap"><table>
           <thead><tr><th>종목</th><th>현재</th><th>목표</th><th>주문 후</th><th>보유 계좌</th></tr></thead>
           <tbody id="bdItems"></tbody>
@@ -1633,7 +1635,7 @@ function renderCls(){
   }).join('') + `<p class="note" style="margin-top:8px">합계 ${won(b.all/1e4)} (예금·현금 포함)</p>`;
 }
 /* ---------- 계좌 묶음 리밸런싱 ---------- */
-let RBM='acct', BMD='buy', BORD={};
+let RBM='acct', BMD='buy', BORD={}; const BCLS_OPEN=new Set();
 const PLACE={us:['pension2','isa','stock'], kr:['stock','isa','pension2']}, PLACE_DEF=['isa','pension2','stock'];
 const bdDoc=()=>STATE?.bundles?.core||null;
 const bdName=b=>String(b?.name||'').trim()||'개인연금 성장형';
@@ -1710,11 +1712,16 @@ function renderBundle(){
   for(const [c,v] of Object.entries(P.otherCls)){ cur[c]=(cur[c]||0)+v; aft[c]=(aft[c]||0)+v }
   const curCash=P.cashAll+P.orders.reduce((a,o)=>a+(o.side==='buy'?1:-1)*n(o.q)*n(o.p),0);
   const pc=v=>P.B? (v/P.B*100).toFixed(1)+'%' : '–';
-  const rows=[...CLS_ORDER.filter(c=>c!=='cash'&&(tgt[c]||cur[c])).map(c=>`<tr><td>${CLS_LABEL[c]||c}</td><td class="num">${pc(cur[c]||0)}</td><td class="num">${+(tgt[c]||0).toFixed(1)}%</td><td class="num">${pc(aft[c]||0)}</td></tr>`),
-    `<tr><td>현금성</td><td class="num">${pc(curCash)}</td><td class="num">${+P.wCash.toFixed(1)}%</td><td class="num">${pc(cashAfter)}</td></tr>`];
-  $('bdCls').innerHTML=rows.join('');
-  // 종목별 목표 표: 주문 후 = 지금 보유 + 화면의 주문(고친 수량 포함)
+  // 종목별: 주문 후 = 지금 보유 + 화면의 주문(고친 수량 포함)
   const ordAmt=code=>ords.filter(o=>o.code===code).reduce((a,o)=>a+(o.side==='buy'?1:-1)*n(o.q)*n(o.p),0);
+  // 자산군 행을 누르면 그 자산군의 종목을 바로 아래에 펼침
+  const sub=c=>BCLS_OPEN.has(c)? P.items.filter(t=>t.cls===c).map(t=>`<tr class="sub"><td>└ ${esc(t.name)}</td><td class="num">${pc(t.H0)}</td><td class="num">${+n(t.w).toFixed(1)}%</td><td class="num">${pc(t.H0+ordAmt(t.code))}</td></tr>`).join('')
+    + (P.otherCls[c]? `<tr class="sub"><td>└ 목표 밖 보유</td><td class="num">${pc(P.otherCls[c])}</td><td class="num">–</td><td class="num">${pc(P.otherCls[c])}</td></tr>` : '') : '';
+  const car=c=>`<span class="car">${BCLS_OPEN.has(c)?'▾':'▸'}</span>`;
+  const rows=[...CLS_ORDER.filter(c=>c!=='cash'&&(tgt[c]||cur[c])).map(c=>`<tr class="clickable" data-bcls="${esc(c)}" tabindex="0" aria-expanded="${BCLS_OPEN.has(c)}"><td>${CLS_LABEL[c]||c}${car(c)}</td><td class="num">${pc(cur[c]||0)}</td><td class="num">${+(tgt[c]||0).toFixed(1)}%</td><td class="num">${pc(aft[c]||0)}</td></tr>`+sub(c)),
+    `<tr class="clickable" data-bcls="cash" tabindex="0" aria-expanded="${BCLS_OPEN.has('cash')}"><td>현금성${car('cash')}</td><td class="num">${pc(curCash)}</td><td class="num">${+P.wCash.toFixed(1)}%</td><td class="num">${pc(cashAfter)}</td></tr>`
+    + (BCLS_OPEN.has('cash')? P.model.filter(t=>t.cls==='cash').map(t=>`<tr class="sub"><td>└ ${esc(t.name)}</td><td class="num">–</td><td class="num">${+n(t.w).toFixed(1)}%</td><td class="num">–</td></tr>`).join('')+`<tr class="sub"><td colspan="4" class="note">└ 현재·주문 후는 예수금·RP를 합친 값</td></tr>` : '')];
+  $('bdCls').innerHTML=rows.join('');
   const held=code=>P.mem.filter(m=>(P.HA0[code]?.[m.id]||0)>0).map(m=>nm(m.id)).join(' · ')||'–';
   $('bdItems').innerHTML=[...P.items.map(t=>`<tr><td>${esc(t.name)}</td><td class="num">${pc(t.H0)}</td><td class="num">${+n(t.w).toFixed(1)}%</td><td class="num">${pc(t.H0+ordAmt(t.code))}</td><td>${held(t.code)}</td></tr>`),
     `<tr><td>현금성 (${esc(P.model.filter(t=>t.cls==='cash').map(t=>t.name).join(' · ')||'예수금·RP')})</td><td class="num">${pc(curCash)}</td><td class="num">${+P.wCash.toFixed(1)}%</td><td class="num">${pc(cashAfter)}</td><td>예수금·RP 포함</td></tr>`].join('');
@@ -1741,6 +1748,9 @@ $('bdOrders').addEventListener('input',e=>{
   const a=n(BORD[row.dataset.bk].q)*n(BORD[row.dataset.bk].p); row.querySelector('.oa').textContent=`${o.side==='buy'?'매수':'매도'} 금액 ${wonF(a)}`;
 });
 $('bdOrders').addEventListener('change',()=>renderBundle());
+const bclsToggle=e=>{ const r=e.target.closest('[data-bcls]'); if(!r) return; if(e.type==='keydown'&&e.key!=='Enter'&&e.key!==' ') return; if(e.type==='keydown') e.preventDefault();
+  const c=r.dataset.bcls; BCLS_OPEN.has(c)?BCLS_OPEN.delete(c):BCLS_OPEN.add(c); renderBundle() };
+$('bdCls').addEventListener('click',bclsToggle); $('bdCls').addEventListener('keydown',bclsToggle);
 $('bdOrders').addEventListener('click',async e=>{
   const btn=e.target.closest('[data-bap]'); if(!btn) return; const row=btn.closest('[data-bk]');
   const base=($('bdOrders')._ords||[]).find(x=>bkey(x)===row.dataset.bk); if(!base) return;
