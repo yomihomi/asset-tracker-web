@@ -2283,7 +2283,7 @@ function acctHoldHTML(id,p){
     if(k==='amt') return `<div><span>${esc(x.name)}</span><span class="r num">${wonF(v)}</span></div>`;
     if(k==='usd'&&isCashItem(x)) return `<div><span>${esc(x.name)}</span><span class="r num">$${qtyF(n(x.qty)*n(x.price))} <span class="note">≈ ${wonF(v)}</span></span></div>`;
     const usd=k==='usd', c=n(x.cost), cv=c*n(x.qty)*(usd?fx:1), g= c>0? v-cv : null; if(g!=null){ tc+=cv; tv+=v }
-    return `<div><span>${esc(x.name||x.code)} <span class="note">${qtyF(x.qty)}주 · ${c>0? `매입가 ${usd?'$'+qtyF(c):wonF(c)}` : '매입가 미입력'}</span></span><span class="r">${g!=null?`<span class="num ${g>=0?'pos':'neg'}">${g>=0?'+':''}${won(g/1e4)} (${g>=0?'+':''}${(g/cv*100).toFixed(2)}%)</span>`:''}</span></div>` });
+    return `<div><span>${esc(x.name||x.code)}<span class="note" style="display:block">${qtyF(x.qty)}주 · ${c>0? `매입가 ${usd?'$'+qtyF(c):wonF(c)}` : '매입가 미입력'}</span></span><span class="r">${g!=null?`<span class="num ${g>=0?'pos':'neg'}">${g>=0?'+':''}${won(g/1e4)} (${g>=0?'+':''}${(g/cv*100).toFixed(2)}%)</span>`:''}</span></div>` });
   return `<div class="acct-items hold"><div><b>보유 잔고</b><button class="btn ghost sm" type="button" data-hold-open="${esc(id)}">잔고 맞추기</button></div>
     <div><span>원화 예수금</span><span class="r num">${wonF(n(p.cash))}</span></div>
     ${n(p.cashUsd)? `<div><span>달러 예수금</span><span class="r num">$${qtyF(p.cashUsd)} <span class="note">≈ ${wonF(n(p.cashUsd)*fx)}</span></span></div>` : ''}
