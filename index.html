@@ -16,17 +16,17 @@
 <style>
 /* Layout: 한 줄 모바일 앱. 위에서부터 판정 → 목표 갭 → 나이 눈금 → 시뮬레이션 → 실적, 하단 고정 탭바 */
 :root{
-  --bg:#f3f5f4; --surface:#ffffff; --ink:#15201d; --muted:#5d6b67; --line:#dbe2df;
+  --bg:#f3f5f4; --surface:#ffffff; --ink:#15201d; --muted:#5d6b67; --line:#dbe2df; --grid:#cfd8d4;
   --accent:#1f6f5c; --accent-soft:#e3f0eb; --warn:#b4690e; --warn-soft:#fbefdc; --bad:#b3372f; --bad-soft:#f8e4e2; --good:#2c7a4b;
   --font-body:"IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
   --font-num:"IBM Plex Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
   --r:12px;
 }
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
-  --bg:#0f1513; --surface:#18201d; --ink:#e6ece9; --muted:#97a6a1; --line:#2a3531;
+  --bg:#0f1513; --surface:#18201d; --ink:#e6ece9; --muted:#97a6a1; --line:#2a3531; --grid:#46534f;
   --accent:#5fbf9f; --accent-soft:#1d3029; --warn:#e3a14a; --warn-soft:#33281a; --bad:#ec7b72; --bad-soft:#3a201e; --good:#6cc08b; color-scheme:dark}}
 :root[data-theme="dark"]{
-  --bg:#0f1513; --surface:#18201d; --ink:#e6ece9; --muted:#97a6a1; --line:#2a3531;
+  --bg:#0f1513; --surface:#18201d; --ink:#e6ece9; --muted:#97a6a1; --line:#2a3531; --grid:#46534f;
   --accent:#5fbf9f; --accent-soft:#1d3029; --warn:#e3a14a; --warn-soft:#33281a; --bad:#ec7b72; --bad-soft:#3a201e; --good:#6cc08b; color-scheme:dark}
 *{box-sizing:border-box}
 body{background:var(--bg);color:var(--ink);font-family:var(--font-body);font-size:15px;line-height:1.55}
@@ -49,7 +49,7 @@ header.top .asof{color:var(--muted);font-size:13px}
 .kv > div{display:flex;flex-direction:column;gap:2px;min-width:0}
 .kv .k{font-size:12.5px;color:var(--muted)} .kv .v{font-size:17px;font-weight:600}
 .note{font-size:12.5px;color:var(--muted);margin:0}
-.bar{height:8px;background:var(--bg);border-radius:99px;overflow:hidden;border:1px solid var(--line)}
+.bar{height:8px;background:var(--line);border-radius:99px;overflow:hidden;border:1px solid color-mix(in srgb,var(--muted) 45%,transparent)}
 .bar > i{display:block;height:100%;background:var(--accent);border-radius:99px}
 .gap-line{display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap}
 .gap-line .v{font-size:26px;font-weight:600}
@@ -287,8 +287,8 @@ input:disabled{opacity:.75}
     <div class="card">
       <h2 id="gapTitle">55세 은퇴를 위한 추가 적립</h2>
       <div class="gap-line">
-        <div><div class="note">필요 (연금·DC 외 매월)</div><div class="v num" id="needSave">–</div></div>
-        <div style="text-align:right"><div class="note">최근 평균</div><div class="v num" id="curSave">–</div></div>
+        <div><div class="note">필요 (연금 포함, DC 제외 · 매월)</div><div class="v num" id="needSave">–</div></div>
+        <div style="text-align:right"><div class="note">최근 평균 (연금 포함, DC 제외)</div><div class="v num" id="curSave">–</div></div>
       </div>
       <div class="bar" aria-hidden="true"><i id="saveBar" style="width:0%"></i></div>
       <span class="chip warn" id="gapChip">–</span>
@@ -854,7 +854,7 @@ function projSVG(d,lines,targetAge){
   const step=ymax>40000?10000:ymax>20000?5000:2500; ymax=Math.ceil(ymax/step)*step||10000;
   const X=a=>L+(a-x0)/(x1-x0)*(W-L-R), Y=v=>T+(1-v/ymax)*(H-T-B);
   let s=`<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" font-family="IBM Plex Mono, monospace" font-size="11">`;
-  for(let v=0;v<=ymax;v+=step){s+=`<line x1="${L}" x2="${W-R}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--line)" stroke-width="1"/><text x="${L-6}" y="${Y(v)+4}" text-anchor="end" fill="var(--muted)">${v/10000}</text>`}
+  for(let v=0;v<=ymax;v+=step){s+=`<line x1="${L}" x2="${W-R}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--grid)" stroke-width="1"/><text x="${L-6}" y="${Y(v)+4}" text-anchor="end" fill="var(--muted)">${v/10000}</text>`}
   for(let a=Math.ceil(x0/5)*5;a<=x1;a+=5){s+=`<text x="${X(a)}" y="${H-10}" text-anchor="middle" fill="var(--muted)">${a}</text>`}
   [[targetAge,'목표'],[S.npsAge,'국민연금']].forEach(([a,t])=>{ if(a>x0&&a<x1) s+=`<line x1="${X(a)}" x2="${X(a)}" y1="${T}" y2="${H-B}" stroke="var(--muted)" stroke-dasharray="3 4" stroke-width="1"/><text x="${X(a)+4}" y="${T+10}" fill="var(--muted)">${t}</text>`});
   lines.forEach(l=>{
@@ -871,7 +871,7 @@ function histSVG(rows){
   let lo=Math.min(...vals), hi=Math.max(...vals); const pad=(hi-lo)*.15||1000; lo=Math.max(0,lo-pad); hi=hi+pad;
   const X=i=>L+i/(rows.length-1)*(W-L-R), Y=v=>T+(1-(v-lo)/(hi-lo))*(H-T-B);
   let s=`<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" font-family="IBM Plex Mono, monospace" font-size="11">`;
-  [lo,(lo+hi)/2,hi].forEach(v=>{s+=`<line x1="${L}" x2="${W-R}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--line)"/><text x="${L-6}" y="${Y(v)+4}" text-anchor="end" fill="var(--muted)">${(v/10000).toFixed(1)}</text>`});
+  [lo,(lo+hi)/2,hi].forEach(v=>{s+=`<line x1="${L}" x2="${W-R}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--grid)"/><text x="${L-6}" y="${Y(v)+4}" text-anchor="end" fill="var(--muted)">${(v/10000).toFixed(1)}</text>`});
   const pts=rows.map((r,i)=>`${X(i).toFixed(1)},${Y(r.V1).toFixed(1)}`);
   s+=`<polygon points="${X(0)},${H-B} ${pts.join(' ')} ${X(rows.length-1)},${H-B}" fill="var(--accent-soft)"/>`;
   s+=`<polyline points="${pts.join(' ')}" fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linejoin="round"/>`;
@@ -904,14 +904,15 @@ function render(){
   // 목표 갭
   const okAt=save=>sim(d,{save,retireM:tM,...r}).ok;
   let need=null; if(d.ageM<tM){ need= okAt(0)?0: (okAt(20000)? bisect(0,20000,okAt,true): null) }
-  const needOther= need===null?null:Math.max(0,need-d.fixedM);
+  // 연금(연금저축1+IRP) 포함, DC 제외로 비교: 필요 = 전체 필요 저축 − DC, 최근 평균 = 연금 + 기타
+  const needOther= need===null?null:Math.max(0,need-d.dcM), curNoDc=d.pensionAvg+d.otherAvg;
   $('needSave').textContent= need===null?'계산 불가':`월 ${won(needOther)}`;
-  $('curSave').textContent=`월 ${won(d.otherAvg)}`;
-  $('saveBar').style.width= needOther? Math.min(100,d.otherAvg/needOther*100)+'%':'100%';
+  $('curSave').textContent=`월 ${won(curNoDc)}`;
+  $('saveBar').style.width= needOther? Math.min(100,curNoDc/needOther*100)+'%':'100%';
   const gc=$('gapChip');
   if(needOther===null){gc.className='chip bad';gc.textContent='목표 나이가 지났거나 저축만으로 도달 불가'}
-  else if(d.otherAvg>=needOther){gc.className='chip good';gc.textContent=`월 ${won(d.otherAvg-needOther)} 여유`}
-  else{gc.className='chip warn';gc.textContent=`월 ${won(needOther-d.otherAvg)} 더 필요`}
+  else if(curNoDc>=needOther){gc.className='chip good';gc.textContent=`월 ${won(curNoDc-needOther)} 여유`}
+  else{gc.className='chip warn';gc.textContent=`월 ${won(needOther-curNoDc)} 더 필요`}
   const cur=sim(d,{save:curSave,retireM:tM,...r,series:true});
   $('needAsset').textContent=won(needAtRetire(tM,r.post));
   $('projAsset').textContent=won(cur.atR??0);
@@ -1591,7 +1592,7 @@ function dayChartSVG(rows){
   const t0=new Date(rows[0].date).getTime(), t1=new Date(rows.at(-1).date).getTime();
   const X=d=>L+(new Date(d).getTime()-t0)/((t1-t0)||1)*(W-L-R), Y=v=>T+(1-(v-lo)/(hi-lo))*(H-T-B);
   let s=`<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" font-family="IBM Plex Mono, monospace" font-size="11">`;
-  for(let k=0;k<=3;k++){const v=lo+(hi-lo)*k/3; s+=`<line x1="${L}" x2="${W-R}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--line)"/><text x="${L-6}" y="${Y(v)+4}" text-anchor="end" fill="var(--muted)">${(v/1e8).toFixed(2)}</text>`}
+  for(let k=0;k<=3;k++){const v=lo+(hi-lo)*k/3; s+=`<line x1="${L}" x2="${W-R}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--grid)"/><text x="${L-6}" y="${Y(v)+4}" text-anchor="end" fill="var(--muted)">${(v/1e8).toFixed(2)}</text>`}
   const pts=rows.map(r=>`${X(r.date).toFixed(1)},${Y(r.total).toFixed(1)}`);
   s+=`<polygon points="${L},${H-B} ${pts.join(' ')} ${X(rows.at(-1).date).toFixed(1)},${H-B}" fill="var(--accent-soft)"/>`;
   s+=`<polyline points="${pts.join(' ')}" fill="none" stroke="var(--accent)" stroke-width="2.2" stroke-linejoin="round"/>`;
@@ -1860,7 +1861,7 @@ function semiChartSVG(rows,mode){
   const X=i=>L+i/(rows.length-1)*(W-L-R), Y=v=>T+(1-(Math.max(lo,Math.min(hi,v))-lo)/(hi-lo))*(H-T-B);
   let s=`<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" font-family="IBM Plex Mono, monospace" font-size="11">`;
   const st0=(hi-lo)/4, mg=10**Math.floor(Math.log10(st0)), stp=[1,2,2.5,5,10].map(x=>x*mg).find(x=>x>=st0);
-  for(let v=Math.ceil(lo/stp)*stp; v<=hi; v+=stp) s+=`<line x1="${L}" x2="${W-R}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--line)"/><text x="${L-6}" y="${Y(v)+4}" text-anchor="end" fill="var(--muted)">${Math.round(v)}${mode==='yoy'?'%':''}</text>`;
+  for(let v=Math.ceil(lo/stp)*stp; v<=hi; v+=stp) s+=`<line x1="${L}" x2="${W-R}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--grid)"/><text x="${L-6}" y="${Y(v)+4}" text-anchor="end" fill="var(--muted)">${Math.round(v)}${mode==='yoy'?'%':''}</text>`;
   if(lo<0) s+=`<line x1="${L}" x2="${W-R}" y1="${Y(0)}" y2="${Y(0)}" stroke="var(--muted)" stroke-dasharray="3 3"/>`;
   // 물량 둔화·금액 둔화 달은 아래에 표시
   rows.forEach((r,i)=>{ if(r.sig!=='ok'&&mode==='amt') s+=`<rect x="${X(i)-1.5}" y="${H-B-4}" width="3" height="4" fill="${r.sig==='amt'?'var(--bad)':'var(--warn)'}"/>` });
