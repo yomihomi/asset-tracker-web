@@ -2214,7 +2214,7 @@ function renderAcctYear(ports,live,now,recs){
   $('apBase').textContent=`기준: ${Y.base.month} 월 기록 잔액 → 지금. 합계 ${tg>=0?'+':''}${won(tg/1e4)}${pc(tg,tb+tw)} · 올해 입금 ${tf>=0?'+':''}${won(tf/1e4)} 제외${Y.upto?` (${Y.upto}까지는 월 기록 적립을 계좌에 나눠 넣은 추정)`:''}`;
   $('acctList').innerHTML=rows.map(({id,p,v,g,f,den,byCost,byPrin})=>{ const open=AP_OPEN.has(id);
     return `<div class="acct clickable" data-acct="${esc(id)}" role="button" tabindex="0" aria-expanded="${open}"><span class="nm">${esc(p.name||id)}<span class="car">${open?'▾':'▸'}</span>${p.track===false?' <span class="note">· 추이 제외</span>':''}</span><span class="vv"><span class="num">${won(v/1e4)}</span>${g!=null?`<span class="dv num ${g>=0?'pos':'neg'}">${g>=0?'+':''}${won(g/1e4)}${pc(g,den)}</span>`:''}${byCost?`<span class="dv note">매입금액 ${won(f/1e4)} 기준</span>`: byPrin?`<span class="dv note">원금 ${won(f/1e4)} 기준 (올해 개설)</span>`: f&&g!=null?`<span class="dv note">입금 ${f>=0?'+':''}${won(f/1e4)} 제외</span>`:''}</span></div>`
-      + (open? (dBase? acctItemsHTML(p,dBase,g) : '<div class="acct-items"><p class="note">지난해 말 일별 기록이 없어 종목별 손익은 볼 수 없습니다. 계좌 합계만 표시합니다.</p></div>') : '');
+      + (open? (STATE?.yearBase?.[y-1]?.accts?.[id]? acctItemsYB(p,STATE.yearBase[y-1],id,g) : dBase? acctItemsHTML(p,dBase,g) : '<div class="acct-items"><p class="note">지난해 말 일별 기록이 없어 종목별 손익은 볼 수 없습니다. 계좌 합계만 표시합니다.</p></div>') : '');
   }).join('');
 }
 // 전체 기간: 원금 대비 평가금액. 원금 = 입력값 + 입력일 뒤 저축·일회성 입금·출금·계좌 간 이동 (배당·이자·보정은 제외)
@@ -2261,6 +2261,27 @@ function apStart(k){ const t=new Date(Date.now()+9*3600e3), d=t.toISOString().sl
   const wd=(t.getUTCDay()+6)%7; return new Date(t.getTime()-wd*864e5).toISOString().slice(0,10) }
 // 기준일 뒤 입금·출금·이동(배당·이자는 수익이라 제외)
 function acctFlow(p,after){ return (p.deposits||[]).filter(d=>String(d.date)>after&&d.type!=='div').reduce((a,d)=>a+n(d.amount),0) }
+// 연초 기준(state.yearBase[지난해])이 있는 계좌의 '년' 종목별 손익: 지난해 말 보유(엑셀) + 앱 밖 매매 추정(엑셀 주간 기록) + 그 뒤 앱 매매 기록
+function acctItemsYB(p,YB,id,acctGain){
+  const A=YB.accts[id], hold=A.hold||{}, NM=YB.names||{};
+  const app=(p.trades||[]).filter(t=>String(t.date)>YB.preUntil).flatMap(t=>(t.items||[]).map(y=>({code:y.code,name:y.name,side:y.side,q:n(y.q),p:n(y.p)})));
+  const trs=[...(A.pre||[]),...app], items=(p.items||[]).filter(x=>x.code);
+  const codes=new Set([...Object.keys(hold),...trs.map(t=>t.code).filter(Boolean),...items.map(x=>x.code)]);
+  const rows=[]; let sum=0;
+  for(const code of codes){
+    const x=items.find(i=>i.code===code), qNow=x? n(x.qty):0, pNow=x? epx(x):0, h=hold[code], q0=h? n(h.q):0, p0=h? n(h.p):0;
+    let net=0,buys=0,dq=0; for(const t of trs) if(t.code===code){ const sg=t.side==='buy'?1:-1; net+=sg*n(t.q)*n(t.p); dq+=sg*n(t.q); if(sg>0) buys+=n(t.q)*n(t.p) }
+    if(!qNow&&!q0&&!dq&&!net) continue;
+    const g=qNow*pNow-q0*p0-net, b0=q0*p0+buys; sum+=g;
+    rows.push({nm:x?.name||h?.name||NM[code]||trs.find(t=>t.code===code&&t.name)?.name||code, v:qNow*pNow, g, r:b0>0?g/b0*100:null, sold:!qNow, mis:Math.abs(q0+dq-qNow)>0.5});
+  }
+  rows.sort((a,b)=>(a.sold-b.sold)||(b.v-a.v));
+  const fmt=r=>`<span class="num ${r.g>=0?'pos':'neg'}">${r.g>=0?'+':''}${won(r.g/1e4)}${r.r!=null?` (${r.r>=0?'+':''}${r.r.toFixed(2)}%)`:''}</span>`;
+  const rest= acctGain!=null? acctGain-sum : null;
+  return `<div class="acct-items"><p class="note">추정: 연초 보유는 ${esc(YB.date)} 엑셀 기록, ${esc(YB.preUntil)}까지의 매매는 엑셀 주간 기록(그 주 가격), 그 뒤는 앱 매매 기록으로 계산</p>
+    ${rows.map(r=>`<div><span>${esc(r.nm)} <span class="note">${r.sold?'매도 완료':won(r.v/1e4)}${r.mis?' · 수량 불일치':''}</span></span><span class="r">${fmt(r)}</span></div>`).join('')||'<p class="note">종목이 없습니다.</p>'}
+    ${rest!=null&&Math.abs(rest)>=1e4?`<div><span class="note">예수금·기타 (배당·이자·추정 오차 등)</span><span class="r num note">${rest>=0?'+':''}${won(rest/1e4)}</span></div>`:''}</div>`;
+}
 // 종목별 손익 = 지금 평가액 − 기준일 수량×기준일 가격 − (기준일 뒤 순매수 금액). 기준일 수량은 지금 수량에서 이후 매매를 되돌려 구함
 function acctItemsHTML(p,base,acctGain){
   if(!base) return '<div class="acct-items"><p class="note">기준 기록이 없습니다.</p></div>';
