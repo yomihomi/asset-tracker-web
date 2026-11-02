@@ -2286,7 +2286,7 @@ const holdKind=x=> isCashItem(x)&&isManual(x)? 'amt' : x.src==='usdm'? 'usd' : i
 const qtyF=v=>n(v).toLocaleString('ko-KR',{maximumFractionDigits:4});
 const ED={};  // 계좌별 편집 중 값
 function edInit(p){ return {cash:Math.round(n(p.cash)), cashUsd:n(p.cashUsd), type:'',
-  it:(p.items||[]).map(x=>({key:x.code||x.name, qty:n(x.qty), price:n(x.price), cost:n(x.cost)>0? n(x.cost) : '', amt:Math.round(n(x.qty)*n(x.price))}))} }
+  it:(p.items||[]).map(x=>({key:x.code||x.name, qty:n(x.qty), price:n(x.price), cost:n(x.cost)>0? (x.src==='usdm'? +n(x.cost).toFixed(4) : Math.round(n(x.cost))) : '',  /* 원 단위로 보이기 (달러 종목은 소수 4자리) */ amt:Math.round(n(x.qty)*n(x.price))}))} }
 // 편집값과 저장값의 차이: cash = 예수금·RP·달러 현금성 변화(원), qv = 그 밖 종목 수량 변화의 평가액(원)
 function holdDiff(p,e){ const fx=n(PRICES?.fx); let cash=n(e.cash)-n(p.cash)+(n(e.cashUsd)-n(p.cashUsd))*fx, qv=0;
   (p.items||[]).forEach((x,i)=>{ const y=e.it[i]; if(!y) return; const k=holdKind(x);
