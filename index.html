@@ -32,8 +32,8 @@
   --accent:#5fbf9f; --accent-soft:#1d3029; --warn:#e3a14a; --warn-soft:#33281a; --bad:#ec7b72; --bad-soft:#3a201e; --good:#6cc08b; color-scheme:dark}
 /* 현황·자산 차트 눈금선(연두)·기준선(주황): 자산 탭 상단 칩과 같은 계열 */
 :root{--grid-g:color-mix(in srgb,var(--good) 38%,var(--surface)); --mark-o:var(--warn);
-  /* 막대 채움: 정상 연한 연두, 경고 연한 주황, 오류 연한 빨강 (바탕·테두리는 그대로) */
-  --fill-ok:color-mix(in srgb,var(--good) 55%,var(--surface)); --fill-warn:color-mix(in srgb,var(--warn) 55%,var(--surface)); --fill-bad:color-mix(in srgb,var(--bad) 55%,var(--surface))}
+  /* 막대 채움: 상태 칩 글자색과 같게 (정상 연두 --good, 경고 주황 --warn, 오류 --bad). 바탕·테두리는 그대로 */
+  --fill-ok:var(--good); --fill-warn:var(--warn); --fill-bad:var(--bad)}
 *{box-sizing:border-box}
 body{background:var(--bg);color:var(--ink);font-family:var(--font-body);font-size:15px;line-height:1.55}
 .wrap{max-width:680px;margin:0 auto;padding-inline:16px;padding-block:16px 96px;display:flex;flex-direction:column;gap:14px}
