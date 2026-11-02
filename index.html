@@ -1672,7 +1672,11 @@ function renderCls(){
   }).join('') + `<p class="note" style="margin-top:8px">합계 ${won(b.all/1e4)} (예금·현금 포함)</p>`;
 }
 /* ---------- 계좌 묶음 리밸런싱 ---------- */
-let RBM='acct', BMD='buy', BORD={}; const BCLS_OPEN=new Set();
+let RBM='acct', BMD='buy', BORD={}, BFROZEN=false;
+// 첫 체결 반영 때 주문 목록을 고정 (반영할 때마다 다시 계산돼 남은 주문의 계좌·종목이 바뀌던 문제). 새로고침해도 같은 날이면 유지
+const bdFreezeSave=()=>{ try{ BFROZEN? localStorage.setItem('bdFrozen',JSON.stringify({date:todayStr(),ord:BORD})) : localStorage.removeItem('bdFrozen') }catch{} };
+const bdUnfreeze=()=>{ BORD={}; BFROZEN=false; bdFreezeSave() };
+try{ const f=JSON.parse(localStorage.getItem('bdFrozen')||'null'); if(f&&f.date===todayStr()&&f.ord&&Object.keys(f.ord).length){ BORD=f.ord; BFROZEN=true } else localStorage.removeItem('bdFrozen') }catch{} const BCLS_OPEN=new Set();
 const PLACE={us:['pension2','isa','stock'], kr:['stock','isa','pension2']}, PLACE_DEF=['isa','pension2','stock'];
 const bdDoc=()=>STATE?.bundles?.core||null;
 const bdName=b=>String(b?.name||'').trim()||'개인연금 성장형';
@@ -1733,8 +1737,11 @@ function renderBundle(){
   $('bdInfo').textContent=`묶음: ${P.mem.map(m=>PF[m.id]?.name||m.id).join(' · ')} · 목표: ${bdName(P.b)} (${P.model.length}종목)${P.reserve?` · 일반계좌 RP 중 ${wonF(P.reserve)}은 옮길 돈으로 남겨 두고 계산`:''}${stockHold(P.b)?` · 일반계좌는 ${stockHold(P.b)} 전까지 국내 주식형만 매수 (해외 ETF·리츠 등은 그때부터)`:''}`;
   if(document.activeElement!==$('bdReserve')) $('bdReserve').value=n(P.b.reserve);
   // 사용자가 고친 주문은 유지
-  const ords=P.orders.map(o=>{ const e=BORD[bkey(o)]; return e?.edited? {...o,q:e.q,p:e.p} : o });
-  for(const k of Object.keys(BORD)) if(BORD[k].edited&&!ords.some(o=>bkey(o)===k)){ const [acct,code,side]=k.split('|'); const t=P.items.find(x=>x.code===code); if(t) ords.push({acct,code,name:t.name,side,q:BORD[k].q,p:BORD[k].p}) }
+  if(BFROZEN&&!Object.values(BORD).some(e=>e.edited)) bdUnfreeze();  // 고정한 주문을 다 반영하면 다시 계산
+  const ords= BFROZEN? Object.entries(BORD).filter(([,e])=>e.edited).map(([k,e])=>{ const [acct,code,side]=k.split('|'); return {acct,code,side,name:e.name||P.items.find(x=>x.code===code)?.name||code,q:e.q,p:e.p,reloc:e.reloc} })
+    : P.orders.map(o=>{ const e=BORD[bkey(o)]; return e?.edited? {...o,q:e.q,p:e.p} : o });
+  if(BFROZEN) $('bdInfo').textContent+=` · 주문 고정 중 (남은 주문을 다시 계산하려면 '추천 주문으로 되돌리기')`;
+  if(!BFROZEN) for(const k of Object.keys(BORD)) if(BORD[k].edited&&!ords.some(o=>bkey(o)===k)){ const [acct,code,side]=k.split('|'); const t=P.items.find(x=>x.code===code); if(t) ords.push({acct,code,name:t.name,side,q:BORD[k].q,p:BORD[k].p}) }
   let buy=0,sell=0; ords.forEach(o=>{ const a=n(o.q)*n(o.p); if(o.side==='buy') buy+=a; else sell+=a });
   const bdr=bundleDrifts(P), bs=$('bdSignal');
   if(bdr.length){ bs.className='chip warn'; bs.textContent=`${bdr.map(driftTxt).join(' · ')} 이탈 · 전체 리밸런싱 권장` }
@@ -1779,7 +1786,7 @@ function renderBundle(){
 $('bdOrders').addEventListener('input',e=>{
   const row=e.target.closest('[data-bk]'), k=e.target.dataset.bo; if(!row||!k) return;
   const o=($('bdOrders')._ords||[]).find(x=>bkey(x)===row.dataset.bk); if(!o) return;
-  const cur=BORD[row.dataset.bk]||{q:o.q,p:o.p}; BORD[row.dataset.bk]={...cur,[k]:n(e.target.value),edited:true};
+  const cur=BORD[row.dataset.bk]||{q:o.q,p:o.p,name:o.name,reloc:o.reloc}; BORD[row.dataset.bk]={...cur,[k]:n(e.target.value),edited:true}; if(BFROZEN) bdFreezeSave();
   const a=n(BORD[row.dataset.bk].q)*n(BORD[row.dataset.bk].p); row.querySelector('.oa').textContent=`${o.side==='buy'?'매수':'매도'} 금액 ${wonF(a)}`;
 });
 $('bdOrders').addEventListener('change',()=>renderBundle());
@@ -1804,18 +1811,19 @@ $('bdOrders').addEventListener('click',async e=>{
   } else { if(n(o.q)>n(it.qty)) return msg($('bdMsg'),`보유 ${n(it.qty)}주보다 많이 팔 수 없습니다.`,true); it.qty=n(it.qty)-n(o.q); doc.cash=n(doc.cash)+amt }
   if(it.src!=='usdm') it.price=n(o.p);
   doc.trades=[...(doc.trades||[]),{date:todayStr(),buy:o.side==='buy'?amt:0,sell:o.side==='sell'?amt:0,cashAfter:Math.round(n(doc.cash)),fromRp:Math.round(fromRp),via:'bundle',items:[{name:it.name,code:it.code,side:o.side,q:n(o.q),p:n(o.p)}]}].slice(-200);
+  if(!BFROZEN){ for(const x of $('bdOrders')._ords||[]){ const k=bkey(x); BORD[k]={q:x.q,p:x.p,name:x.name,reloc:x.reloc,...(BORD[k]?.edited?BORD[k]:{}),edited:true} } BFROZEN=true; bdFreezeSave() }
   btn.dataset.armed=''; btn.disabled=true; btn.textContent='저장 중…'; msg($('bdMsg'),'저장하는 중입니다. 몇 초 걸립니다.');
   // 저장이 끝난 뒤 고친 주문 기록을 지우고 다시 그려야 반영한 줄이 바로 사라짐
-  try{ await putPF(o.acct,doc); delete BORD[row.dataset.bk]; renderBundle(); msg($('bdMsg'),`${doc.name}: ${it.name} ${o.side==='buy'?'매수':'매도'} ${n(o.q).toLocaleString('ko-KR')}주 반영 완료${fromRp?` (RP에서 ${wonF(fromRp)} 사용)`:''}`) }
+  try{ await putPF(o.acct,doc); delete BORD[row.dataset.bk]; bdFreezeSave(); renderBundle(); msg($('bdMsg'),`${doc.name}: ${it.name} ${o.side==='buy'?'매수':'매도'} ${n(o.q).toLocaleString('ko-KR')}주 반영 완료${fromRp?` (RP에서 ${wonF(fromRp)} 사용)`:''}`) }
   catch(err){ btn.disabled=false; btn.textContent='체결 반영'; msg($('bdMsg'),saveErr(err),true) }
 });
 $('bdReserveSave').addEventListener('click',async()=>{
   const b=bdDoc(); if(!b) return; const v=Math.max(0,Math.round(n($('bdReserve').value)));
-  try{ await DB.doc('bundles/core').set({...b,name:bdName(b),reserve:v,updatedAt:new Date().toISOString()}); BORD={}; msg($('bdMsg'),`남겨둘 RP를 ${wonF(v)}으로 저장했습니다.`); renderBundle() }
+  try{ await DB.doc('bundles/core').set({...b,name:bdName(b),reserve:v,updatedAt:new Date().toISOString()}); bdUnfreeze(); msg($('bdMsg'),`남겨둘 RP를 ${wonF(v)}으로 저장했습니다.`); renderBundle() }
   catch(err){ msg($('bdMsg'),saveErr(err),true) }
 });
-$('bdReset').addEventListener('click',()=>{ BORD={}; renderBundle(); msg($('bdMsg'),'추천 주문으로 되돌렸습니다.') });
-document.querySelectorAll('[data-bmd]').forEach(b=>b.addEventListener('click',()=>{ BMD=b.dataset.bmd; BORD={}; document.querySelectorAll('[data-bmd]').forEach(x=>x.setAttribute('aria-pressed',x===b)); renderBundle() }));
+$('bdReset').addEventListener('click',()=>{ bdUnfreeze(); renderBundle(); msg($('bdMsg'),'추천 주문으로 되돌렸습니다.') });
+document.querySelectorAll('[data-bmd]').forEach(b=>b.addEventListener('click',()=>{ BMD=b.dataset.bmd; bdUnfreeze(); document.querySelectorAll('[data-bmd]').forEach(x=>x.setAttribute('aria-pressed',x===b)); renderBundle() }));
 document.querySelectorAll('[data-rbm]').forEach(b=>b.addEventListener('click',()=>{ RBM=b.dataset.rbm; document.querySelectorAll('[data-rbm]').forEach(x=>x.setAttribute('aria-pressed',x===b)); renderBundle(); try{localStorage.setItem('rbm',RBM)}catch{} }));
 try{ if(localStorage.getItem('rbm')==='bundle'){ RBM='bundle'; document.querySelectorAll('[data-rbm]').forEach(x=>x.setAttribute('aria-pressed',x.dataset.rbm==='bundle')) } }catch{}
 
