@@ -330,6 +330,10 @@ input:disabled{opacity:.75}
       </div>
       <div id="histChart" role="img" aria-label="월별 금융자산 추이"></div>
       <p class="note" id="realNote"></p>
+      <h2 style="margin-top:6px" id="wfTitle">월별 손익</h2>
+      <div class="legend"><span><i style="background:var(--warn)"></i>수익</span><span><i style="background:var(--muted)"></i>손실</span><span><i style="background:color-mix(in srgb,var(--muted) 45%,transparent)"></i>소계</span></div>
+      <div id="wfChart" role="img" aria-label="올해 월별 투자손익 폭포 그래프"></div>
+      <p class="note">월 투자손익 = 그달 말 잔액 − 지난달 말 잔액 − 그달 입금(일회성 포함). 막대는 1월부터 쌓아 올린 누적이고, 맨 오른쪽은 올해 합계입니다. 이번 달은 지금 평가액 기준입니다.</p>
     </div>
 
     <div class="card" id="remCard">
@@ -880,6 +884,28 @@ function projSVG(d,lines,targetAge){
   });
   return s+'</svg>';
 }
+// 월별 손익 폭포 그래프 (올해 1~12월 + 소계). g: [{m:'01', v:만원 또는 null}]
+function wfSVG(g,year){
+  const W=480,H=250,L=40,R=6,T=40,B=22, n12=g.length+1, bw=(W-L-R)/n12;
+  let c=0; const bars=g.map(x=>{ const a=c; if(x.v!=null) c+=x.v; return {a,b:c,v:x.v,m:x.m} }), tot=c;
+  const all=[0,...bars.flatMap(x=>[x.a,x.b])], lo=Math.min(...all), hi=Math.max(...all), pad=(hi-lo)*.12||100;
+  const y0=lo-pad, y1=hi+pad, Y=v=>T+(1-(v-y0)/(y1-y0))*(H-T-B), X=i=>L+i*bw;
+  // 라벨은 억 단위로 짧게(+1.23억 / ▼0.59억), 이웃 라벨과 겹치지 않게 짝수 달은 한 줄 위로
+  const fmt=v=>`${v>=0?'+':'▼'}${(Math.abs(v)/1e4).toFixed(Math.abs(v)>=1e5?1:2)}억`;
+  let s=`<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" font-family="IBM Plex Mono, monospace" font-size="11">`;
+  const step=niceStep((y1-y0)/4);
+  for(let v=Math.ceil(y0/step)*step; v<=y1; v+=step) s+=`<line x1="${L}" x2="${W-R}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--grid)" stroke-width="1"/><text x="${L-4}" y="${Y(v)+3}" text-anchor="end" fill="var(--muted)">${v/1e4}억</text>`;
+  s+=`<line x1="${L}" x2="${W-R}" y1="${Y(0)}" y2="${Y(0)}" stroke="var(--muted)" stroke-width="1"/>`;
+  bars.forEach((x,i)=>{ const cx=X(i)+bw/2;
+    if(x.v!=null&&x.v!==0){ const top=Math.min(Y(x.a),Y(x.b)), h=Math.max(1,Math.abs(Y(x.a)-Y(x.b)));
+      s+=`<rect x="${X(i)+bw*.15}" y="${top}" width="${bw*.7}" height="${h}" fill="${x.v>0?'var(--warn)':'var(--muted)'}" rx="1"/>`;
+      s+=`<text x="${cx}" y="${top-4-(i%2?13:0)}" text-anchor="middle" fill="${x.v>0?'var(--warn)':'var(--ink)'}">${fmt(x.v)}</text>` }
+    if(i<bars.length-1&&x.v!=null) s+=`<line x1="${X(i)+bw*.85}" x2="${X(i+1)+bw*.15}" y1="${Y(x.b)}" y2="${Y(x.b)}" stroke="var(--muted)" stroke-dasharray="2 3" stroke-width="1"/>`;
+    s+=`<text x="${cx}" y="${H-8}" text-anchor="middle" fill="var(--muted)">${+x.m}월</text>` });
+  const i=bars.length, top=Math.min(Y(0),Y(tot)), h=Math.max(1,Math.abs(Y(0)-Y(tot)));
+  s+=`<rect x="${X(i)+bw*.15}" y="${top}" width="${bw*.7}" height="${h}" fill="color-mix(in srgb,var(--muted) 45%,transparent)" rx="1"/><text x="${X(i)+bw/2-2}" y="${top-4}" text-anchor="end" fill="var(--ink)" font-weight="600" dx="${bw/2}">${fmt(tot)}</text><text x="${X(i)+bw/2}" y="${H-8}" text-anchor="middle" fill="var(--muted)">소계</text>`;
+  return s+'</svg>' }
+const niceStep=r=>{ const p=Math.pow(10,Math.floor(Math.log10(Math.max(r,1)))), f=r/p; return (f<=1?1:f<=2?2:f<=5?5:10)*p };
 function histSVG(rows){
   if(rows.length<2) return '';
   const W=640,H=150,L=40,R=12,T=12,B=26, vals=rows.map(r=>r.V1);
@@ -940,6 +966,9 @@ function render(){
   $('projNote').textContent= cur.ok? `현재 속도로 ${S.targetAge}세에 은퇴해도 ${S.endAge}세까지 자산이 남습니다.` : `현재 속도로 ${S.targetAge}세에 은퇴하면 ${ageTxt(cur.depM+1)}에 자산이 바닥납니다.`;
   // 실적
   const y=todayStr().slice(0,4), fmtM=m=>m.replace('-','.');
+  { const byM=Object.fromEntries(d.rows.filter(x=>x.r.month.startsWith(y)&&x.gain!=null).map(x=>[x.r.month.slice(5),x.gain]));
+    const g=Array.from({length:12},(_,i)=>{ const m=String(i+1).padStart(2,'0'); return {m, v: byM[m]??null} });
+    $('wfTitle').textContent=`${y}년 월별 손익`; $('wfChart').innerHTML= Object.keys(byM).length? wfSVG(g,y) : '<p class="note">올해 월 기록이 없습니다.</p>' }
   let dv=0; for(const p of Object.values(PF||{})) for(const x of p.deposits||[]) if(x.type==='div'&&(PV==='all'||String(x.date).startsWith(y))) dv+=n(x.amount);
   $('rNow').textContent=won(d.A0); $('rDiv').textContent=won(dv/1e4);
   if(PV==='ytd'){
