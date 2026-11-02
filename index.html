@@ -1316,9 +1316,9 @@ function buildApply(idxs){
   idxs.forEach(i=>{ const x=next.items[i], o=ORD[i]; if(!x||!o||o.side==='none'||!(n(o.q)>0)) return;
     const q=n(o.q), pr=n(o.p);
     const c0=x.cost;  // 매입가(평균단가): 매수하면 가중 평균으로 갱신, 되돌릴 때 c0로 복원
-    if(o.side==='buy'){ if(n(x.cost)>0&&pr>0) x.cost=(n(x.qty)*n(x.cost)+q*pr)/(n(x.qty)+q); x.qty=n(x.qty)+q; buy+=q*pr } else { if(q>n(x.qty)) over.push(x.name); x.qty=n(x.qty)-q; sell+=q*pr }
+    if(o.side==='buy'){ if(pr>0) x.cost= n(x.cost)>0? (n(x.qty)*n(x.cost)+q*pr)/(n(x.qty)+q) : !(n(x.qty)>0)? pr : x.cost; x.qty=n(x.qty)+q; buy+=q*pr }  // 처음 사는 종목은 체결가가 매입가 else { if(q>n(x.qty)) over.push(x.name); x.qty=n(x.qty)-q; sell+=q*pr }
     if(pr>0&&x.src!=='usdm') x.price=pr;
-    trades.push({name:x.name,code:x.code||'',side:o.side,q,p:pr,...(c0!=null&&c0!==x.cost?{c0}:{})});
+    trades.push({name:x.name,code:x.code||'',side:o.side,q,p:pr,...(c0!==x.cost?{c0:c0??null}:{})});
   });
   const cashAfter=Math.round(n(next.cash)-buy+sell);
   const err= over.length? `보유 수량보다 많이 팔 수 없습니다: ${over.join(', ')}`
@@ -1806,17 +1806,19 @@ $('bdOrders').addEventListener('click',async e=>{
   if(!(n(o.q)>0)||!(n(o.p)>0)) return msg($('bdMsg'),'수량과 체결가를 확인하세요.',true);
   if(busyAcct(o.acct)) return msg($('bdMsg'),`계좌별 화면의 ${PF[o.acct]?.name||o.acct}에 저장하지 않은 변경이 있습니다. 먼저 저장하세요.`,true);
   if(btn.dataset.armed!=='1'){ btn.dataset.armed='1'; btn.textContent='한 번 더 누르면 반영'; return }
-  const doc=clone(PF[o.acct]); let it=(doc.items||[]).find(x=>x.code===o.code), amt=Math.round(n(o.q)*n(o.p)), fromRp=0;
+  const doc=clone(PF[o.acct]); let it=(doc.items||[]).find(x=>x.code===o.code), amt=Math.round(n(o.q)*n(o.p)), fromRp=0, c0;
   if(!it){ if(o.side==='sell') return msg($('bdMsg'),'그 계좌에 이 종목이 없습니다.',true); it={name:o.name,code:o.code,src:'kr',qty:0,price:n(o.p),w:0}; (doc.items ||= []).push(it) }
+  c0=it.cost;
   if(o.side==='buy'){
     const fromCash=Math.min(amt,Math.max(0,n(doc.cash))); doc.cash=n(doc.cash)-fromCash; let need=amt-fromCash;
     if(need>0){ const rp=doc.items.find(x=>isCashItem(x)&&isManual(x)); const rv=rp? n(rp.qty)*n(rp.price):0;
       if(!rp||rv<need){ return msg($('bdMsg'),`${doc.name} 예수금과 RP가 ${wonF(need-rv)} 부족합니다.`,true) }
       rp.price=n(rp.price)-need/(n(rp.qty)||1); fromRp=need }
+    if(n(o.p)>0) it.cost= n(it.cost)>0? (n(it.qty)*n(it.cost)+n(o.q)*n(o.p))/(n(it.qty)+n(o.q)) : !(n(it.qty)>0)? n(o.p) : it.cost;  // 매입가 갱신 (처음 사면 체결가)
     it.qty=n(it.qty)+n(o.q);
   } else { if(n(o.q)>n(it.qty)) return msg($('bdMsg'),`보유 ${n(it.qty)}주보다 많이 팔 수 없습니다.`,true); it.qty=n(it.qty)-n(o.q); doc.cash=n(doc.cash)+amt }
   if(it.src!=='usdm') it.price=n(o.p);
-  doc.trades=[...(doc.trades||[]),{date:todayStr(),buy:o.side==='buy'?amt:0,sell:o.side==='sell'?amt:0,cashAfter:Math.round(n(doc.cash)),fromRp:Math.round(fromRp),via:'bundle',items:[{name:it.name,code:it.code,side:o.side,q:n(o.q),p:n(o.p)}]}].slice(-200);
+  doc.trades=[...(doc.trades||[]),{date:todayStr(),buy:o.side==='buy'?amt:0,sell:o.side==='sell'?amt:0,cashAfter:Math.round(n(doc.cash)),fromRp:Math.round(fromRp),via:'bundle',items:[{name:it.name,code:it.code,side:o.side,q:n(o.q),p:n(o.p),...(c0!==it.cost?{c0:c0??null}:{})}]}].slice(-200);
   if(!BFROZEN){ for(const x of $('bdOrders')._ords||[]){ const k=bkey(x); BORD[k]={q:x.q,p:x.p,name:x.name,reloc:x.reloc,...(BORD[k]?.edited?BORD[k]:{}),edited:true} } BFROZEN=true; bdFreezeSave() }
   btn.dataset.armed=''; btn.disabled=true; btn.textContent='저장 중…'; msg($('bdMsg'),'저장하는 중입니다. 몇 초 걸립니다.');
   // 저장이 끝난 뒤 고친 주문 기록을 지우고 다시 그려야 반영한 줄이 바로 사라짐
@@ -2539,7 +2541,7 @@ $('tradeList').addEventListener('click',async e=>{
   if(busyAcct(acct)) return msg($('trMsg'),`리밸런싱 탭의 ${p.name||acct} 계좌에 저장하지 않은 변경이 있습니다. 먼저 저장하거나 버리세요.`,true);
   const a=clone(p), miss=[], neg=[];
   for(const x of t.items||[]){ const it=a.items.find(y=>(x.code&&y.code===x.code)||y.name===x.name); if(!it){miss.push(x.name);continue}
-    it.qty=n(it.qty)+(x.side==='buy'?-n(x.q):n(x.q)); if(x.c0!=null) it.cost=x.c0; if(it.qty<0) neg.push(it.name) }
+    it.qty=n(it.qty)+(x.side==='buy'?-n(x.q):n(x.q)); if('c0' in x){ if(x.c0==null) delete it.cost; else it.cost=x.c0 } if(it.qty<0) neg.push(it.name) }
   if(miss.length) return msg($('trMsg'),`지금 계좌에 없는 종목이 있어 되돌릴 수 없습니다: ${miss.join(', ')}`,true);
   if(neg.length) return msg($('trMsg'),`되돌리면 보유 수량이 음수가 됩니다: ${neg.join(', ')}. 이후 매매를 먼저 되돌리세요.`,true);
   if(del.dataset.armed!=='1'){ del.dataset.armed='1'; del.textContent='한 번 더 누르면 되돌림'; return }
