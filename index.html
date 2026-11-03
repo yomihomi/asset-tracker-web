@@ -18,17 +18,17 @@
 <style>
 /* Layout: 한 줄 모바일 앱. 위에서부터 판정 → 목표 갭 → 나이 눈금 → 시뮬레이션 → 실적, 하단 고정 탭바 */
 :root{
-  --bg:#f3f5f4; --surface:#ffffff; --ink:#15201d; --muted:#5d6b67; --line:#dbe2df; --grid:#cfd8d4;
+  --bg:#f3f5f4; --surface:#ffffff; --ink:#15201d; --muted:#5d6b67; --line:#dbe2df; --grid:#cfd8d4; --down:#2f6db5;
   --accent:#1f6f5c; --accent-soft:#e3f0eb; --warn:#b4690e; --warn-soft:#fbefdc; --bad:#b3372f; --bad-soft:#f8e4e2; --good:#2c7a4b;
   --font-body:"IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
   --font-num:"IBM Plex Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
   --r:12px;
 }
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
-  --bg:#0f1513; --surface:#18201d; --ink:#e6ece9; --muted:#97a6a1; --line:#2a3531; --grid:#46534f;
+  --bg:#0f1513; --surface:#18201d; --ink:#e6ece9; --muted:#97a6a1; --line:#2a3531; --grid:#46534f; --down:#6aa8f0;
   --accent:#5fbf9f; --accent-soft:#1d3029; --warn:#e3a14a; --warn-soft:#33281a; --bad:#ec7b72; --bad-soft:#3a201e; --good:#6cc08b; color-scheme:dark}}
 :root[data-theme="dark"]{
-  --bg:#0f1513; --surface:#18201d; --ink:#e6ece9; --muted:#97a6a1; --line:#2a3531; --grid:#46534f;
+  --bg:#0f1513; --surface:#18201d; --ink:#e6ece9; --muted:#97a6a1; --line:#2a3531; --grid:#46534f; --down:#6aa8f0;
   --accent:#5fbf9f; --accent-soft:#1d3029; --warn:#e3a14a; --warn-soft:#33281a; --bad:#ec7b72; --bad-soft:#3a201e; --good:#6cc08b; color-scheme:dark}
 /* 현황·자산 차트 눈금선(연두)·기준선(주황): 자산 탭 상단 칩과 같은 계열 */
 :root{--grid-g:color-mix(in srgb,var(--good) 38%,var(--surface)); --mark-o:var(--warn);
@@ -331,7 +331,7 @@ input:disabled{opacity:.75}
       <div id="histChart" role="img" aria-label="월별 금융자산 추이"></div>
       <p class="note" id="realNote"></p>
       <h2 style="margin-top:6px" id="wfTitle">월별 손익</h2>
-      <div class="legend"><span><i style="background:var(--warn)"></i>수익</span><span><i style="background:var(--muted)"></i>손실</span><span><i style="background:color-mix(in srgb,var(--muted) 45%,transparent)"></i>소계</span></div>
+      <div class="legend"><span><i style="background:var(--warn)"></i>수익</span><span><i style="background:var(--down)"></i>손실</span><span><i style="background:color-mix(in srgb,var(--muted) 45%,transparent)"></i>소계</span></div>
       <div id="wfChart" role="img" aria-label="올해 월별 투자손익 폭포 그래프"></div>
       <p class="note">월 투자손익 = 그달 말 잔액 − 지난달 말 잔액 − 그달 입금(일회성 포함). 막대는 1월부터 쌓아 올린 누적이고, 맨 오른쪽은 올해 합계입니다. 이번 달은 지금 평가액 기준입니다.</p>
     </div>
@@ -898,10 +898,10 @@ function wfSVG(g,year){
   for(let v=Math.ceil(y0/step)*step; v<=y1; v+=step) s+=`<line x1="${L}" x2="${W-R}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--grid)" stroke-width="1"/><text x="${L-4}" y="${Y(v)+3}" text-anchor="end" fill="var(--muted)">${ax(v)}</text>`;
   s+=`<line x1="${L}" x2="${W-R}" y1="${Y(0)}" y2="${Y(0)}" stroke="var(--muted)" stroke-width="1"/>`;
   const mY=H-8;
-  const col=v=> v>0? 'var(--warn)' : 'var(--ink)';
+  const col=v=> v>0? 'var(--warn)' : 'var(--down)';
   bars.forEach((x,i)=>{ const cx=X(i)+bw/2;
     if(x.v!=null&&x.v!==0){ const top=Math.min(Y(x.a),Y(x.b)), h=Math.max(1,Math.abs(Y(x.a)-Y(x.b)));
-      s+=`<rect x="${X(i)+bw*.15}" y="${top}" width="${bw*.7}" height="${h}" fill="${x.v>0?'var(--warn)':'var(--muted)'}" rx="1"/>` }
+      s+=`<rect x="${X(i)+bw*.15}" y="${top}" width="${bw*.7}" height="${h}" fill="${x.v>0?'var(--warn)':'var(--down)'}" rx="1"/>` }
     if(x.v!=null&&x.v!==0){ const top=Math.min(Y(x.a),Y(x.b)), bot=Math.max(Y(x.a),Y(x.b));
       s+=`<text x="${cx}" y="${x.v>0? top-4 : bot+12}" text-anchor="middle" font-size="10" fill="${col(x.v)}">${fmt(x.v)}</text>` }
     if(i<bars.length-1&&x.v!=null) s+=`<line x1="${X(i)+bw*.85}" x2="${X(i+1)+bw*.15}" y1="${Y(x.b)}" y2="${Y(x.b)}" stroke="var(--muted)" stroke-dasharray="2 3" stroke-width="1"/>`;
