@@ -1355,7 +1355,9 @@ function buildApply(idxs){
   idxs.forEach(i=>{ const x=next.items[i], o=ORD[i]; if(!x||!o||o.side==='none'||!(n(o.q)>0)) return;
     const q=n(o.q), pr=n(o.p);
     const c0=x.cost;  // 매입가(평균단가): 매수하면 가중 평균으로 갱신, 되돌릴 때 c0로 복원
-    if(o.side==='buy'){ if(pr>0) x.cost= n(x.cost)>0? (n(x.qty)*n(x.cost)+q*pr)/(n(x.qty)+q) : !(n(x.qty)>0)? pr : x.cost; x.qty=n(x.qty)+q; buy+=q*pr }  // 처음 사는 종목은 체결가가 매입가 else { if(q>n(x.qty)) over.push(x.name); x.qty=n(x.qty)-q; sell+=q*pr }
+    // 매수: 매입가를 가중 평균으로 갱신(처음 사는 종목은 체결가가 매입가) / 매도: 수량을 줄이고 매도 대금을 예수금에
+    if(o.side==='buy'){ if(pr>0) x.cost= n(x.cost)>0? (n(x.qty)*n(x.cost)+q*pr)/(n(x.qty)+q) : !(n(x.qty)>0)? pr : x.cost; x.qty=n(x.qty)+q; buy+=q*pr }
+    else { if(q>n(x.qty)) over.push(x.name); x.qty=n(x.qty)-q; sell+=q*pr }
     if(pr>0&&x.src!=='usdm') x.price=pr;
     trades.push({name:x.name,code:x.code||'',side:o.side,q,p:pr,...(c0!==x.cost?{c0:c0??null}:{})});
   });
