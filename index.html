@@ -331,9 +331,10 @@ input:disabled{opacity:.75}
       <div id="histChart" role="img" aria-label="월별 금융자산 추이"></div>
       <p class="note" id="realNote"></p>
       <h2 style="margin-top:6px" id="wfTitle">월별 손익</h2>
+      <select id="wfAcct" aria-label="계좌 선택" style="max-width:220px"><option value="">전체 계좌</option></select>
       <div class="legend"><span><i style="background:var(--warn)"></i>수익</span><span><i style="background:var(--down)"></i>손실</span><span><i style="background:color-mix(in srgb,var(--muted) 45%,transparent)"></i>소계</span></div>
       <div id="wfChart" role="img" aria-label="올해 월별 투자손익 폭포 그래프"></div>
-      <p class="note">월 투자손익 = 그달 말 잔액 − 지난달 말 잔액 − 그달 입금(일회성 포함). 막대는 1월부터 쌓아 올린 누적이고, 맨 오른쪽은 올해 합계입니다. 이번 달은 지금 평가액 기준입니다.</p>
+      <p class="note">월 투자손익 = 그달 말 잔액 − 지난달 말 잔액 − 그달 입금(일회성 포함). 막대는 1월부터 쌓아 올린 누적이고, 맨 오른쪽은 올해 합계입니다. 이번 달은 지금 평가액 기준입니다. 계좌별 1~9월은 월 기록 적립을 계좌에 나눈 추정('년'과 같은 방식)입니다.</p>
     </div>
 
     <div class="card" id="remCard">
@@ -885,6 +886,23 @@ function projSVG(d,lines,targetAge){
   return s+'</svg>';
 }
 // 월별 손익 폭포 그래프 (올해 1~12월 + 소계). g: [{m:'01', v:만원 또는 null}]
+// 월별 손익: 전체는 월 기록의 투자손익, 계좌별은 계좌 잔액 변화 − 그 계좌 입금(1~9월은 '년'과 같은 배분 추정, 이후는 앱 입금 기록)
+let WF_D=null;
+function acctMonthGains(id,y){
+  const recs=mergedRecs().filter(r=>r.month<=todayStr().slice(0,7)), Y=yearFlows(Object.entries(PF||{})); if(!Y) return null;
+  const fl={}; for(const e of Y.E[id]||[]){ const m=new Date(e.t+9*3600e3).toISOString().slice(0,7); fl[m]=(fl[m]||0)+e.a/1e4 }  // 만원
+  const out={}; let prev=Y.base.bal?.[id]!=null? n(Y.base.bal[id]) : 0;
+  for(const r of recs.filter(r=>r.month.startsWith(y))){ const b=n(r.bal?.[id]); out[r.month.slice(5)]=b-prev-(fl[r.month]||0); prev=b }
+  return out }
+function renderWF(){
+  const d=WF_D; if(!d) return; const y=todayStr().slice(0,4), sel=$('wfAcct'), id=sel.value;
+  const opts=Object.entries(PF||{}).sort((a,b)=>n(a[1].order)-n(b[1].order)).map(([k,p])=>`<option value="${esc(k)}" ${k===id?'selected':''}>${esc(p.name||k)}</option>`).join('');
+  sel.innerHTML=`<option value="">전체 계좌</option>${opts}`;
+  const byM= id? (acctMonthGains(id,y)||{}) : Object.fromEntries(d.rows.filter(x=>x.r.month.startsWith(y)&&x.gain!=null).map(x=>[x.r.month.slice(5),x.gain]));
+  const g=Array.from({length:12},(_,i)=>{ const m=String(i+1).padStart(2,'0'); return {m, v: byM[m]??null} });
+  $('wfTitle').textContent=`${y}년 월별 손익${id?` · ${PF[id]?.name||id}`:''}`;
+  $('wfChart').innerHTML= Object.keys(byM).length? wfSVG(g,y) : '<p class="note">올해 월 기록이 없습니다.</p>' }
+$('wfAcct').addEventListener('change',renderWF);
 function wfSVG(g,year){
   // 금액 라벨: 수익은 막대 위, 손실은 막대 아래 (만원, 쉼표 없이 짧게)
   const W=480,H=270,L=40,R=6,T=20,B=40, n12=g.length+1, bw=(W-L-R)/n12;
@@ -972,9 +990,7 @@ function render(){
   $('projNote').textContent= cur.ok? `현재 속도로 ${S.targetAge}세에 은퇴해도 ${S.endAge}세까지 자산이 남습니다.` : `현재 속도로 ${S.targetAge}세에 은퇴하면 ${ageTxt(cur.depM+1)}에 자산이 바닥납니다.`;
   // 실적
   const y=todayStr().slice(0,4), fmtM=m=>m.replace('-','.');
-  { const byM=Object.fromEntries(d.rows.filter(x=>x.r.month.startsWith(y)&&x.gain!=null).map(x=>[x.r.month.slice(5),x.gain]));
-    const g=Array.from({length:12},(_,i)=>{ const m=String(i+1).padStart(2,'0'); return {m, v: byM[m]??null} });
-    $('wfTitle').textContent=`${y}년 월별 손익`; $('wfChart').innerHTML= Object.keys(byM).length? wfSVG(g,y) : '<p class="note">올해 월 기록이 없습니다.</p>' }
+  WF_D=d; renderWF();
   let dv=0; for(const p of Object.values(PF||{})) for(const x of p.deposits||[]) if(x.type==='div'&&(PV==='all'||String(x.date).startsWith(y))) dv+=n(x.amount);
   $('rNow').textContent=won(d.A0); $('rDiv').textContent=won(dv/1e4);
   if(PV==='ytd'){
