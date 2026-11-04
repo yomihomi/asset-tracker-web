@@ -2215,12 +2215,18 @@ function yearFlows(ports){
   const pr={}; for(const [id,p] of ports) if(catOf(id)==='pension') pr[id]=(p.deposits||[]).filter(d=>d.type==='new'&&n(d.amount)>0).reduce((a,d)=>a+n(d.amount),0);
   const prSum=Object.values(pr).reduce((a,b)=>a+b,0);
   const put=(id,t,a)=>{ F[id]+=a; E[id].push({t,a}) };
+  // 금 현물을 여러 달에 나눠 산 경우: 원금을 알면, 잔액이 원금의 10% 넘게 늘어난 달들을 매수 달로 보고 그 증가분을 원금 합계에 맞춰 나눔(만원)
+  //  (금값만으로 한 달에 10% 넘게 오르는 일은 드묾. 원금이 없으면 처음 산 달 잔액 전체를 매수로 봄)
+  const gBuy={};
+  for(const g of goldIds){ const p=PF[g]||{}, pr=n(p.principal?.amount)/1e4; if(!(pr>0)||n(base.bal?.[g])>0) continue;
+    let prev=0; const inc={}; for(const r of saved){ const b=n(r.bal?.[g]), d=b-prev; if(d>=pr*0.1) inc[r.month]=d; prev=b }
+    const sum=Object.values(inc).reduce((a,b)=>a+b,0); if(sum>0){ gBuy[g]={}; for(const [m,d] of Object.entries(inc)) gBuy[g][m]=d*pr/sum } }
   let last=base;
   for(const r of saved){
     const t=Date.parse(r.month+'-15');  // 그달 중간에 들어왔다고 봄
     // 금 현물: 금값이 오르면 입금 없이도 잔액이 늘어나므로 배분 대상에서 뺌. 처음 산 달(직전 잔액 0)만 그달 잔액 전체를 입금으로 봄.
     // 그달 '기타' 적립은 다른 계좌의 잔액 증가분에 먼저 배분하고 남는 돈을 금 매수에 씀. 그래도 모자라는 금 매수액은 일반계좌에서 옮긴 돈으로 봄
-    const buys=goldIds.map(g=>[g,n(r.bal?.[g])*1e4]).filter(([g,P])=>P>0&&!(n(last.bal?.[g])>0));
+    const buys=goldIds.map(g=> gBuy[g]? [g,(gBuy[g][r.month]||0)*1e4] : [g, !(n(last.bal?.[g])>0)? n(r.bal?.[g])*1e4 : 0]).filter(([g,P])=>P>0);
     for(const cat of ['pension','dc','other']){
       let amt=(n(r.add?.[cat])+(cat==='other'?n(r.add?.once):0))*1e4;
       for(const id of Object.keys(known)) if(catOf(id)===cat){ const a=known[id][r.month]||0; if(a){ put(id,t,a); amt-=a } }
