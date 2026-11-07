@@ -1215,6 +1215,9 @@ function rbClsRender(){
 const rclsToggle=e=>{ const r=e.target.closest('[data-rcls]'); if(!r) return; if(e.type==='keydown'&&e.key!=='Enter'&&e.key!==' ') return; if(e.type==='keydown') e.preventDefault();
   const c=r.dataset.rcls; RB_CLS_OPEN.has(c)?RB_CLS_OPEN.delete(c):RB_CLS_OPEN.add(c); rbClsRender() };
 $('rbCls').addEventListener('click',rclsToggle); $('rbCls').addEventListener('keydown',rclsToggle);
+// 입력하던 카드에서 벗어나면(다른 칸·빈 곳을 누름) 매도 → 매수 → 주문 없음 순서로 다시 정렬
+function rbSortRows(){ $('rbItems').querySelectorAll('[data-i]').forEach(row=>{ const o=ORD[+row.dataset.i]; if(o&&!row.contains(document.activeElement)) row.style.order= o.side==='sell'?0: o.side==='buy'?1:2 }) }
+$('rbItems').addEventListener('focusout',e=>{ const card=e.target.closest('[data-i]'); setTimeout(()=>{ if(!card||!card.contains(document.activeElement)) rbSortRows() },0) });
 function rbCalc(){
   if(!draft) return;
   const r=rbPlan(draft,0,MD), it=draft.items||[], band=n(draft.band||5);
@@ -1225,8 +1228,8 @@ function rbCalc(){
     const o=ORD[i], set=(id,v)=>{const el=$(id); if(el&&document.activeElement!==el) el.value=v};
     set(`o-${i}-side`,o.side); set(`o-${i}-q`,o.q); set(`o-${i}-p`,o.p);
     $('ord-'+i)?.setAttribute('class','ord '+o.side);
-    // 추천 주문을 매도 → 매수 → 주문 없음 순으로 보이기. 사용자가 고친 줄은 자리를 옮기지 않음(입력 중에 카드가 다른 곳으로 튀지 않게)
-    const row=$('rbItems').querySelector(`[data-i="${i}"]`); if(row&&!o.edited) row.style.order= o.side==='sell'?0: o.side==='buy'?1:2;
+    // 매도 → 매수 → 주문 없음 순으로 보이기. 지금 입력 중인 카드만 자리를 그대로 두고, 그 카드에서 벗어나면 rbSortRows가 다시 정렬
+    const row=$('rbItems').querySelector(`[data-i="${i}"]`); if(row&&!row.contains(document.activeElement)) row.style.order= o.side==='sell'?0: o.side==='buy'?1:2;
   });
   try{ localStorage.setItem(rbOrdKey(),JSON.stringify({date:todayStr(),n:it.length,ord:ORD})) }catch{}
   // 실제 주문 기준 합계와 주문 후 비중
