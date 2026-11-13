@@ -891,8 +891,10 @@ let WF_D=null;
 function acctMonthGains(id,y){
   const recs=mergedRecs().filter(r=>r.month<=todayStr().slice(0,7)), Y=yearFlows(Object.entries(PF||{})); if(!Y) return null;
   const fl={}; for(const e of Y.E[id]||[]){ const m=new Date(e.t+9*3600e3).toISOString().slice(0,7); fl[m]=(fl[m]||0)+e.a/1e4 }  // 만원
-  const out={}; let prev=Y.base.bal?.[id]!=null? n(Y.base.bal[id]) : 0;
-  for(const r of recs.filter(r=>r.month.startsWith(y))){ const b=n(r.bal?.[id]); out[r.month.slice(5)]=b-prev-(fl[r.month]||0); prev=b }
+  // orig 오차 정리: 오류가 생긴 달(orig)부터 정정 전 달까지 저장된 잔액을 정정액만큼 바로잡아 봄(만원)
+  const fx=(PF[id]?.deposits||[]).filter(d=>d.orig), adjB=m=>fx.filter(d=>m>=String(d.orig).slice(0,7)&&m<String(d.date).slice(0,7)).reduce((a,d)=>a+n(d.amount)/1e4,0);
+  const out={}; let prev=Y.base.bal?.[id]!=null? n(Y.base.bal[id])+adjB(Y.base.month) : 0;
+  for(const r of recs.filter(r=>r.month.startsWith(y))){ const b=n(r.bal?.[id])+adjB(r.month); out[r.month.slice(5)]=b-prev-(fl[r.month]||0); prev=b }
   return out }
 function renderWF(){
   const d=WF_D; if(!d) return; const y=todayStr().slice(0,4), sel=$('wfAcct'), id=sel.value;
@@ -2250,7 +2252,7 @@ function yearFlows(ports){
     last=r;
   }
   const after= saved.length? (()=>{ const [yy,mm]=saved.at(-1).month.split('-').map(Number); return new Date(Date.UTC(yy,mm,0)).toISOString().slice(0,10) })() : `${+y-1}-12-31`;
-  for(const [id,p] of ports) for(const d of p.deposits||[]){ if(String(d.date)<=after||d.type==='div') continue;
+  for(const [id,p] of ports) for(const d of p.deposits||[]){ if(String(d.date)<=after||d.type==='div'||!origIn(d,base.month)) continue;
     const a=n(d.amount); F[id]+=a; E[id].push({t:Date.parse(d.date),a}) }
   return {base, F, E, after, upto: saved.at(-1)?.month||null};
 }
@@ -2327,7 +2329,9 @@ function apStart(k){ const t=new Date(Date.now()+9*3600e3), d=t.toISOString().sl
   if(k==='month') return d.slice(0,8)+'01';
   const wd=(t.getUTCDay()+6)%7; return new Date(t.getTime()-wd*864e5).toISOString().slice(0,10) }
 // 기준일 뒤 입금·출금·이동(배당·이자는 수익이라 제외)
-function acctFlow(p,after){ return (p.deposits||[]).filter(d=>String(d.date)>after&&d.type!=='div').reduce((a,d)=>a+n(d.amount),0) }
+// orig: 그 달에 생긴 잔고 오류를 나중에 바로잡은 '오차 정리' — 기간 시작이 orig보다 앞서면(오류도 정정도 기간 안) 입출금이 아님
+const origIn=(d,after)=> !(d.orig&&String(d.orig)>String(after));
+function acctFlow(p,after){ return (p.deposits||[]).filter(d=>String(d.date)>after&&d.type!=='div'&&origIn(d,after)).reduce((a,d)=>a+n(d.amount),0) }
 // 연초 기준(state.yearBase[지난해])이 있는 계좌의 '년' 종목별 손익: 지난해 말 보유(엑셀) + 앱 밖 매매 추정(엑셀 주간 기록) + 그 뒤 앱 매매 기록
 function acctItemsYB(p,YB,id,acctGain){
   const A=YB.accts[id], hold=A.hold||{}, NM=YB.names||{};
