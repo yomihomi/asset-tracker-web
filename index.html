@@ -1382,12 +1382,14 @@ function usdBuyOf(items,idxs){ const fx=n(PRICES?.fx); if(!(fx>0)) return 0;
 function buildApply(idxs){
   const next=clone(draft), trades=[], over=[]; let buy=0,sell=0;
   idxs.forEach(i=>{ const x=next.items[i], o=ORD[i]; if(!x||!o||o.side==='none'||!(n(o.q)>0)) return;
-    const q=n(o.q), pr=n(o.p);
+    const q=n(o.q), pr=n(o.p), fxN=n(PRICES?.fx);
+    // 직접 입력 · 달러(usdm) 종목은 가격·매입가를 달러로 저장 → 원화 체결가를 현재 환율로 나눔
+    const cp= x.src==='usdm'? (fxN>0? pr/fxN : 0) : pr;
     const c0=x.cost;  // 매입가(평균단가): 매수하면 가중 평균으로 갱신, 되돌릴 때 c0로 복원
     // 매수: 매입가를 가중 평균으로 갱신(처음 사는 종목은 체결가가 매입가) / 매도: 수량을 줄이고 매도 대금을 예수금에
-    if(o.side==='buy'){ if(pr>0) x.cost= n(x.cost)>0? (n(x.qty)*n(x.cost)+q*pr)/(n(x.qty)+q) : !(n(x.qty)>0)? pr : x.cost; x.qty=n(x.qty)+q; buy+=q*pr }
+    if(o.side==='buy'){ if(cp>0) x.cost= n(x.cost)>0? (n(x.qty)*n(x.cost)+q*cp)/(n(x.qty)+q) : !(n(x.qty)>0)? cp : x.cost; x.qty=n(x.qty)+q; buy+=q*pr }
     else { if(q>n(x.qty)) over.push(x.name); x.qty=n(x.qty)-q; sell+=q*pr }
-    if(pr>0&&x.src!=='usdm') x.price=pr;
+    if(cp>0) x.price=cp;
     trades.push({name:x.name,code:x.code||'',side:o.side,q,p:pr,...(c0!==x.cost?{c0:c0??null}:{})});
   });
   const fx=n(PRICES?.fx), u=usdPay(next,usdBuyOf(next.items,idxs)), usdKrw=Math.round((u.a+u.b)*fx);
