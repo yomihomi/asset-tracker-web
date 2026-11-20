@@ -1238,7 +1238,7 @@ function rbCalc(){
   let buy=0,sell=0; const after=[];
   it.forEach((x,i)=>{ const o=ORD[i], sg=o.side==='buy'?1:o.side==='sell'?-1:0, amt=n(o.q)*n(o.p);
     if(sg>0) buy+=amt; if(sg<0) sell+=amt; after[i]=Math.max(0,n(x.qty)+sg*n(o.q))*epx(x) });
-  const cashAfter=n(draft.cash)-buy+sell, totAfter=after.reduce((a,b)=>a+b,0)+cashAfter;
+  const uP=usdPay(draft,usdBuyOf(it,it.map((_,i)=>i))), cashAfter=n(draft.cash)-buy+sell+(uP.a+uP.b)*n(PRICES?.fx), totAfter=after.reduce((a,b)=>a+b,0)+cashAfter;
   $('rbTot').textContent=wonF(r.tot0+n(draft.cashUsd)*n(PRICES?.fx)); $('rbBuy').textContent=wonF(buy); $('rbSell').textContent=wonF(sell);
   $('rbLeft').textContent=wonF(cashAfter); $('rbLeft').style.color= cashAfter<0?'var(--bad)':'';
   const drifts=driftList(it.map((x,i)=>({name:x.name,w:x.w,now:r.tot0? r.val[i]/r.tot0*100:0})),band);
@@ -1372,6 +1372,13 @@ function rbDepRender(){
 }
 $('rbReset').addEventListener('click',()=>{rbOrdClear(); rbCalc(); msg($('rbMsg'),'지금 가격과 잔고로 주문을 다시 계산했습니다.')});
 // 주문 반영: idxs 에 있는 종목만 처리. 반영하지 않은 종목의 주문은 그대로 유지
+// 미국 주식 매수는 달러 예수금 → 달러RP 순으로 먼저 쓰고, 모자라는 만큼만 원화 예수금에서 (주문 가격은 원화 환산가라 현재 환율로 달러 금액을 셈)
+const isUsdStock=x=> (x.src==='us'||x.src==='usdm')&&!isCashItem(x);
+function usdPay(doc,usd){ const a=Math.min(usd,Math.max(0,n(doc.cashUsd)));
+  const rp=(doc.items||[]).find(x=>isCashItem(x)&&x.src==='usdm'), rv=rp? n(rp.qty)*n(rp.price) : 0, b=Math.min(usd-a,Math.max(0,rv));
+  return {a,b,rp} }
+function usdBuyOf(items,idxs){ const fx=n(PRICES?.fx); if(!(fx>0)) return 0;
+  return idxs.reduce((s,i)=>{ const x=items[i], o=ORD[i]; return x&&o&&o.side==='buy'&&isUsdStock(x)? s+n(o.q)*n(o.p)/fx : s },0) }
 function buildApply(idxs){
   const next=clone(draft), trades=[], over=[]; let buy=0,sell=0;
   idxs.forEach(i=>{ const x=next.items[i], o=ORD[i]; if(!x||!o||o.side==='none'||!(n(o.q)>0)) return;
@@ -1383,22 +1390,25 @@ function buildApply(idxs){
     if(pr>0&&x.src!=='usdm') x.price=pr;
     trades.push({name:x.name,code:x.code||'',side:o.side,q,p:pr,...(c0!==x.cost?{c0:c0??null}:{})});
   });
-  const cashAfter=Math.round(n(next.cash)-buy+sell);
+  const fx=n(PRICES?.fx), u=usdPay(next,usdBuyOf(next.items,idxs)), usdKrw=Math.round((u.a+u.b)*fx);
+  if(u.a) next.cashUsd=n(next.cashUsd)-u.a;
+  if(u.b) u.rp.price=n(u.rp.price)-u.b/(n(u.rp.qty)||1);
+  const cashAfter=Math.round(n(next.cash)-buy+sell+usdKrw);
   const err= over.length? `보유 수량보다 많이 팔 수 없습니다: ${over.join(', ')}`
     : !trades.length? '반영할 주문이 없습니다. 수량을 확인하세요.'
     : cashAfter<0? `예수금이 ${wonF(-cashAfter)} 부족합니다. 수량이나 체결가를 확인하세요.` : '';
-  return {next,trades,buy,sell,cashAfter,err};
+  return {next,trades,buy,sell,cashAfter,err,usdA:u.a,usdB:u.b,usdKrw};
 }
 async function commitApply(idxs,res){
-  const {next,trades,buy,sell,cashAfter}=res;
+  const {next,trades,buy,sell,cashAfter,usdA,usdB,usdKrw}=res;
   msg($('rbMsg'),'저장하는 중입니다. 몇 초 걸립니다.');
   next.cash=cashAfter; next.updatedAt=new Date().toISOString();
-  next.trades=[...(next.trades||[]),{date:todayStr(),buy:Math.round(buy),sell:Math.round(sell),cashAfter,items:trades}].slice(-200);
+  next.trades=[...(next.trades||[]),{date:todayStr(),buy:Math.round(buy),sell:Math.round(sell),cashAfter,...(usdKrw?{usdCash:+usdA.toFixed(2),usdRp:+usdB.toFixed(2),usdKrw}:{}),items:trades}].slice(-200);
   // 반영한 종목은 남은 부족분을 다시 추천, 나머지 종목은 지금 주문을 그대로 고정
   Object.keys(ORD).forEach(k=>{ if(idxs.includes(+k)) ORD[k]={side:'none',q:0,p:n(ORD[k]?.p),edited:true}; else if(ORD[k]) ORD[k].edited=true });  // 반영한 줄은 '주문 없음', 나머지는 그대로
   draft=next;
   const nm= trades.length===1? `${trades[0].name} ${trades[0].side==='buy'?'매수':'매도'} ${trades[0].q.toLocaleString('ko-KR')}주` : `${trades.length}건`;
-  await rbWrite(next,`${nm} 반영 완료 · 매수 ${wonF(buy)} · 매도 ${wonF(sell)} · 예수금 ${wonF(cashAfter)}`); rbRenderAll();
+  await rbWrite(next,`${nm} 반영 완료 · 매수 ${wonF(buy)}${usdKrw?` (달러 $${qtyF(usdA+usdB)} 사용)`:''} · 매도 ${wonF(sell)} · 예수금 ${wonF(cashAfter)}`); rbRenderAll();
 }
 $('rbItems').addEventListener('click',async e=>{
   const b=e.target.closest('[data-apply]'); if(!b||!draft) return;
@@ -2637,7 +2647,9 @@ $('tradeList').addEventListener('click',async e=>{
   if(miss.length) return msg($('trMsg'),`지금 계좌에 없는 종목이 있어 되돌릴 수 없습니다: ${miss.join(', ')}`,true);
   if(neg.length) return msg($('trMsg'),`되돌리면 보유 수량이 음수가 됩니다: ${neg.join(', ')}. 이후 매매를 먼저 되돌리세요.`,true);
   if(del.dataset.armed!=='1'){ del.dataset.armed='1'; del.textContent='한 번 더 누르면 되돌림'; return }
-  a.cash=Math.round(n(a.cash)+n(t.buy)-n(t.sell)-n(t.fromRp));
+  a.cash=Math.round(n(a.cash)+n(t.buy)-n(t.sell)-n(t.fromRp)-n(t.usdKrw));
+  if(n(t.usdCash)) a.cashUsd=n(a.cashUsd)+n(t.usdCash);
+  if(n(t.usdRp)){ const r=a.items.find(x=>isCashItem(x)&&x.src==='usdm'); if(r) r.price=n(r.price)+n(t.usdRp)/(n(r.qty)||1); else a.cashUsd=n(a.cashUsd)+n(t.usdRp) }
   if(n(t.fromRp)){ const rp=a.items.find(x=>isCashItem(x)&&isManual(x)); if(rp) rp.price=n(rp.price)+n(t.fromRp)/(n(rp.qty)||1); else a.cash+=n(t.fromRp) }
   a.trades.splice(idx,1);
   try{ await putPF(acct,a); msg($('trMsg'),`${t.date} 매매를 되돌렸습니다. 보유 수량과 예수금이 원래대로 돌아갔습니다.`) }catch(err){ msg($('trMsg'),saveErr(err),true) }
