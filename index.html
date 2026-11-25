@@ -366,6 +366,9 @@ input:disabled{opacity:.75}
       <h2 style="margin-top:4px">통화 · 위기 판별</h2>
       <div class="sig" id="sigFx"></div>
       <p class="note" id="sigFxStage"></p>
+      <h2 style="margin-top:4px">공포 · 탐욕 지수 (CNN)</h2>
+      <div class="sig" id="sigFg"></div>
+      <div id="sigFgBar"></div>
       <details class="more"><summary>신용매수 · 빅테크 투자 입력</summary>
         <div class="lg-ed" style="padding-top:8px">
           <label>신용매수 기준 월<input type="month" id="sg-m"></label>
@@ -2066,6 +2069,22 @@ function macroEval(){
 // 통화로 보는 위기 단계 (10/22 에세이, 기록용): 20일 변화율 기준 달러 대비 강약
 //  1단계 = 유로·엔 강세(달러 대비 +1% 이상) + 원화 약세(−1% 이상) → '유로·엔 > 달러 > 원화'
 //  2단계 = 킹달러: 달러 인덱스 +3% 이상이면서 유로·엔·원화 모두 달러 대비 약세
+// CNN 공포·탐욕 지수: 0~25 극단적 공포 · 25~45 공포 · 45~55 중립 · 55~75 탐욕 · 75~100 극단적 탐욕 (기록용, 매매 신호로 쓰지 않음)
+const fgName=v=> v==null? '–' : v<25?'극단적 공포': v<45?'공포': v<=55?'중립': v<=75?'탐욕':'극단적 탐욕';
+function renderFg(){
+  const g=PRICES?.signals?.fg;
+  if(!g||g.cur==null){ $('sigFg').innerHTML=`<div><span class="nm">공포·탐욕 지수<span class="note">다음 자동 조회(평일 20:10) 후 표시됩니다.</span></span><span class="v">–</span></div>`; $('sigFgBar').innerHTML=''; return }
+  const lv= g.cur<25||g.cur>75? 'bad' : g.cur<45||g.cur>55? 'warn' : '', ago=(nm,v)=> v==null? '' : ` · ${nm} ${Math.round(v)}(${fgName(v)})`;
+  $('sigFg').innerHTML=`<div><span class="nm">${fgName(g.cur)}<span class="note">${md(g.date)} 기준${g.stale?' · 조회 실패, 직전 값':''}${ago('전일',g.d1)}${ago('1주 전',g.w1)}${ago('1달 전',g.m1)}${ago('1년 전',g.y1)}${g.lo!=null?` · 1년 ${Math.round(g.lo)}~${Math.round(g.hi)}`:''} · 미국 주식 심리 7개 지표 합성, 기록용</span></span><span class="v ${lv}">${Math.round(g.cur)}</span></div>`;
+  // 0~100 막대: 구간 색 + 지금 위치 표시, 아래에 최근 60일 흐름
+  const W=320,H=44, x=v=>8+v/100*(W-16), seg=[[0,25,'var(--bad)'],[25,45,'var(--warn)'],[45,55,'var(--grid)'],[55,75,'var(--warn)'],[75,100,'var(--bad)']];
+  const h=(g.hist||[]).filter(r=>r[1]!=null), sp= h.length>1? h.map((r,i)=>`${(8+i/(h.length-1)*(W-16)).toFixed(1)},${(40-r[1]/100*14).toFixed(1)}`).join(' ') : '';
+  $('sigFgBar').innerHTML=`<svg viewBox="0 0 ${W} ${H}" width="100%" style="max-width:420px;display:block" xmlns="http://www.w3.org/2000/svg" font-size="9" font-family="IBM Plex Mono, monospace">
+    ${seg.map(([a,b,c])=>`<rect x="${x(a)}" y="6" width="${x(b)-x(a)}" height="6" fill="${c}" opacity=".55"/>`).join('')}
+    <circle cx="${x(g.cur)}" cy="9" r="5" fill="var(--ink)" stroke="var(--surface)" stroke-width="2"/>
+    <text x="8" y="22" fill="var(--muted)">0 공포</text><text x="${W-8}" y="22" text-anchor="end" fill="var(--muted)">탐욕 100</text>
+    ${sp?`<polyline points="${sp}" fill="none" stroke="var(--accent)" stroke-width="1.5"/><text x="${W/2}" y="${H-1}" text-anchor="middle" fill="var(--muted)">최근 ${h.length}일</text>`:''}</svg>`;
+}
 function fxEval(){
   const F=PRICES?.signals?.fx||{}, sg=v=>`${v>=0?'+':''}${v.toFixed(2)}%`;
   // 달러 대비 강도(%): 유로/달러는 오르면 유로 강세, 달러/엔·달러/원은 오르면 그 통화 약세
@@ -2135,6 +2154,7 @@ function renderSig(){
   $('sigMacro').innerHTML=M.map(x=>`<div><span class="nm">${x.nm}<span class="note">${x.sub}</span></span><span class="v ${x.lv}">${x.v}</span></div>`).join('');
   const FX=fxEval(); $('sigFx').innerHTML=FX.rows.map(x=>`<div><span class="nm">${x.nm}<span class="note">${x.sub}</span></span><span class="v ${x.lv}">${x.v}</span></div>`).join('');
   $('sigFxStage').textContent=FX.text? `단계(기록용): ${FX.text}` : '';
+  renderFg();
   const L=sigEval(), bad=L.filter(x=>x.lv==='bad').length, warn=L.filter(x=>x.lv==='warn').length;
   $('sigList').innerHTML=L.map(x=>`<div><span class="nm">${x.nm}<span class="note">${x.sub}</span></span><span class="v ${x.lv}">${x.v}</span></div>`).join('');
   const chip=$('sigChip');
